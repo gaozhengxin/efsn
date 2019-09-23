@@ -88,6 +88,14 @@ type MakeMultiSwapParam struct {
 	Description   string
 }
 
+func (p *MakeMultiSwapParam) IsMortgage() bool {
+	return IsMortgage(p.Targes)
+}
+
+func (p *MakeMultiSwapParam) GetInterest() *big.Int {
+	return GetMortgageInterest(p.Targes)
+}
+
 // RecallSwapParam wacom
 type RecallSwapParam struct {
 	SwapID Hash
@@ -335,6 +343,11 @@ func (p *MakeMultiSwapParam) Check(blockNumber *big.Int, timestamp uint64) error
 		return fmt.Errorf("SwapSize must be ge 1")
 	}
 
+	isMortgage := IsMortgageEnabled(blockNumber) && p.IsMortgage()
+	if isMortgage && p.SwapSize.Cmp(Big1) != 0 {
+		return fmt.Errorf("SwapSize (stand for interest) must be 1 in mortgage")
+	}
+
 	if len(p.MinFromAmount) != len(p.FromEndTime) ||
 		len(p.MinFromAmount) != len(p.FromAssetID) ||
 		len(p.MinFromAmount) != len(p.FromStartTime) {
@@ -377,6 +390,9 @@ func (p *MakeMultiSwapParam) Check(blockNumber *big.Int, timestamp uint64) error
 		}
 		if p.ToEndTime[i] <= timestamp {
 			return fmt.Errorf("MakeMultiSwap ToEndTime <= latest blockTime")
+		}
+		if isMortgage && p.ToEndTime[i] > timestamp+180*24*3600 {
+			return fmt.Errorf("can only borrow asset in the near 180 days")
 		}
 	}
 

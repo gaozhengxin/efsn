@@ -925,7 +925,9 @@ func (s *PublicFusionAPI) BuildRecallMultiSwapSendTxArgs(ctx context.Context, ar
 		return nil, err
 	}
 
-	if swap.Owner != args.From {
+	isMortgage := swap.IsMortgage()
+	isDealedMortgage := isMortgage && swap.SwapSize.Sign() == 0
+	if !isDealedMortgage && swap.Owner != args.From {
 		return nil, fmt.Errorf("Must be swap onwer can recall")
 	}
 

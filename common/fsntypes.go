@@ -253,11 +253,65 @@ type MultiSwap struct {
 	Notation      uint64
 }
 
+func (s *MultiSwap) IsMortgage() bool {
+	return IsMortgage(s.Targes)
+}
+
+func (s *MultiSwap) GetInterest() *big.Int {
+	return GetMortgageInterest(s.Targes)
+}
+
+func (s *MultiSwap) GetLender() Address {
+	if s.IsMortgage() {
+		return s.Targes[len(s.Targes)-1]
+	}
+	return (Address{})
+}
+
+func (s *MultiSwap) GetLastToEndTime() uint64 {
+	lastEnd := uint64(0)
+	for _, endtime := range s.ToEndTime {
+		if endtime > lastEnd {
+			lastEnd = endtime
+		}
+	}
+	return lastEnd
+}
+
+// use empty address to separate mortgage params from target addresses
+// eg. [param1, param2, ..., empty, target1, target2, ...]
+func IsMortgage(targets []Address) bool {
+	for _, addr := range targets {
+		if addr == (Address{}) {
+			return true
+		}
+	}
+	return false
+}
+
+func GetMortgageInterest(targets []Address) *big.Int {
+	if IsMortgage(targets) {
+		return targets[0].Big()
+	}
+	return big.NewInt(0)
+}
+
 func CheckSwapTargets(targets []Address, addr Address) error {
 	if len(targets) == 0 {
 		return nil
 	}
-	for _, target := range targets {
+	sepIndex := -1
+	for i := len(targets) - 1; i >= 0; i-- {
+		if targets[i] == (Address{}) {
+			sepIndex = i
+			break
+		}
+	}
+	realTargets := targets[sepIndex+1:]
+	if len(realTargets) == 0 {
+		return nil
+	}
+	for _, target := range realTargets {
 		if addr == target {
 			return nil
 		}
