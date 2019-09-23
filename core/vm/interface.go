@@ -30,11 +30,13 @@ type StateDB interface {
 	SubBalance(common.Address, common.Hash, *big.Int)
 	AddBalance(common.Address, common.Hash, *big.Int)
 	GetBalance(common.Hash, common.Address) *big.Int
+	GetAllBalances(addr common.Address) map[common.Hash]string
+
 	SubTimeLockBalance(common.Address, common.Hash, *common.TimeLock, *big.Int, uint64)
 	AddTimeLockBalance(common.Address, common.Hash, *common.TimeLock, *big.Int, uint64)
 	SetTimeLockBalance(common.Address, common.Hash, *common.TimeLock)
 	GetTimeLockBalance(common.Hash, common.Address) *common.TimeLock
-	TransferNotation(notation uint64, from common.Address, to common.Address) error
+	GetAllTimeLockBalances(addr common.Address) map[common.Hash]*common.TimeLock
 
 	GetNonce(common.Address) uint64
 	SetNonce(common.Address, uint64)
@@ -72,6 +74,8 @@ type StateDB interface {
 
 	GenNotation(common.Address) error
 	GetNotation(common.Address) uint64
+	GetAddressByNotation(notation uint64) (common.Address, error)
+	TransferNotation(notation uint64, from common.Address, to common.Address) error
 
 	GenAsset(common.Asset) error
 	UpdateAsset(common.Asset) error

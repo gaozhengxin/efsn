@@ -200,7 +200,9 @@ func (st *StateTransition) TransitionDb() (ret []byte, usedGas uint64, failed bo
 	if common.IsFsnCall(msg.To()) {
 		fsnCallParam = &common.FSNCallParam{}
 		rlp.DecodeBytes(msg.Data(), fsnCallParam)
-		st.fee = common.GetFsnCallFee(msg.To(), fsnCallParam.Func)
+		st.fee = common.GetFsnCallFee(fsnCallParam.Func)
+	} else if common.IsFsnContractCall(msg.To()) {
+		st.fee = vm.RequiredFee(msg.Data())
 	}
 	if err = st.preCheck(); err != nil {
 		return
@@ -227,6 +229,13 @@ func (st *StateTransition) TransitionDb() (ret []byte, usedGas uint64, failed bo
 	)
 	if contractCreation {
 		ret, _, st.gas, vmerr = evm.Create(sender, st.data, st.gas, st.value)
+	} else if common.IsFsnContractCall(msg.To()) {
+		// Increment the nonce for the next transaction
+		st.state.SetNonce(msg.From(), st.state.GetNonce(sender.Address())+1)
+		ret, err = vm.RunFSNContract(st.data, msg.From(), evm, st.value)
+		if err != nil {
+			return ret, 0, true, err
+		}
 	} else {
 		// Increment the nonce for the next transaction
 		st.state.SetNonce(msg.From(), st.state.GetNonce(sender.Address())+1)
@@ -239,13 +248,14 @@ func (st *StateTransition) TransitionDb() (ret []byte, usedGas uint64, failed bo
 					// don't pack tx if handle FsnCall meet error
 					return nil, 0, false, errc
 				}
-				common.DebugInfo("handleFsnCall error", "number", st.evm.Context.BlockNumber, "Func", fsnCallParam.Func, "err", errc)
+				common.DebugInfo("handleFsnCall error", "number", st.evm.Context.BlockNumber, "Func", fsnCallParam.Func.Name(), "err", errc)
 			}
 		}
 
 		ret, st.gas, vmerr = evm.Call(sender, st.to(), st.data, st.gas, st.value)
 	}
 	if vmerr != nil {
+		common.DebugInfo("VM returned with error", "err", vmerr)
 		log.Debug("VM returned with error", "err", vmerr)
 		// The only possible consensus-error would be if there wasn't
 		// sufficient balance to make the transfer happen. The first

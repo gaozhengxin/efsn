@@ -618,6 +618,15 @@ func (s *PublicBlockChainAPI) doCall(ctx context.Context, args CallArgs, blockNr
 	if state == nil || err != nil {
 		return nil, 0, false, err
 	}
+
+	if common.IsFsnContractCall(args.To) {
+		// because GetEVM will change the balance so query directly here
+		bs, err := vm.FSNContractQueryBalance(state, args.Data)
+		if err == nil {
+			return bs, 0, false, nil
+		}
+	}
+
 	// Set sender address or use a default if none specified
 	addr := args.From
 	if addr == (common.Address{}) {

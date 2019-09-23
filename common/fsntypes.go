@@ -36,6 +36,9 @@ var (
 
 	// ReportIllegalAddress wacom
 	ReportKeyAddress = HexToAddress("0xfffffffffffffffffffffffffffffffffffffff8")
+
+	// FSNContractAddress wacom
+	FSNContractAddress = HexToAddress("0xfffffffffffffffffffffffffffffffffffffff7")
 )
 
 func (addr Address) IsSpecialKeyAddress() bool {
@@ -137,15 +140,16 @@ func (f FSNCallFunc) Name() string {
 	return "Unkonwn"
 }
 
+func IsFsnContractCall(to *Address) bool {
+	return to != nil && *to == FSNContractAddress
+}
+
 func IsFsnCall(to *Address) bool {
 	return to != nil && *to == FSNCallAddress
 }
 
-func GetFsnCallFee(to *Address, funcType FSNCallFunc) *big.Int {
+func GetFsnCallFee(funcType FSNCallFunc) *big.Int {
 	fee := big.NewInt(0)
-	if !IsFsnCall(to) {
-		return fee
-	}
 	switch funcType {
 	case GenNotationFunc:
 		fee = big.NewInt(100000000000000000) // 0.1 FSN

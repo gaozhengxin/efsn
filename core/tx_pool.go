@@ -31,6 +31,7 @@ import (
 	"github.com/FusionFoundation/efsn/consensus/datong"
 	"github.com/FusionFoundation/efsn/core/state"
 	"github.com/FusionFoundation/efsn/core/types"
+	"github.com/FusionFoundation/efsn/core/vm"
 	"github.com/FusionFoundation/efsn/event"
 	"github.com/FusionFoundation/efsn/log"
 	"github.com/FusionFoundation/efsn/metrics"
@@ -655,6 +656,11 @@ func (pool *TxPool) add(tx *types.Transaction, local bool) (bool, error) {
 		invalidTxCounter.Inc(1)
 		return false, err
 	}
+	// If the transaction is an invalid FsnCall tx, discard it
+	if err := pool.validateFsnContractTx(tx); err != nil {
+		invalidTxCounter.Inc(1)
+		return false, err
+	}
 	// If the transaction pool is full, discard underpriced transactions
 	if uint64(pool.all.Count()) >= pool.config.GlobalSlots+pool.config.GlobalQueue {
 		// If the new transaction is underpriced, don't accept it
@@ -984,7 +990,8 @@ func (pool *TxPool) promoteExecutables(accounts []common.Address) {
 		}
 		// Drop all FsnCall transactions that are invalid
 		filter := func(tx *types.Transaction) bool {
-			return pool.validateFsnCallTx(tx) != nil
+			return pool.validateFsnCallTx(tx) != nil ||
+				pool.validateFsnContractTx(tx) != nil
 		}
 		removes, _ := list.FilterInvalid(filter)
 		for _, tx := range removes {
@@ -1150,7 +1157,8 @@ func (pool *TxPool) demoteUnexecutables() {
 		}
 		// Drop all FsnCall transactions that are invalid
 		filter := func(tx *types.Transaction) bool {
-			return pool.validateFsnCallTx(tx) != nil
+			return pool.validateFsnCallTx(tx) != nil ||
+				pool.validateFsnContractTx(tx) != nil
 		}
 		removes, adjusts := list.FilterInvalid(filter)
 		for _, tx := range removes {
@@ -1437,7 +1445,7 @@ func (pool *TxPool) validateFsnCallTx(tx *types.Transaction) error {
 	param := common.FSNCallParam{}
 	rlp.DecodeBytes(tx.Data(), &param)
 
-	fee := common.GetFsnCallFee(to, param.Func)
+	fee := common.GetFsnCallFee(param.Func)
 	fsnValue := big.NewInt(0)
 
 	switch param.Func {
@@ -1903,6 +1911,492 @@ func (pool *TxPool) validateFsnCallTx(tx *types.Transaction) error {
 
 	default:
 		return fmt.Errorf("Unsupported FsnCall func '%v'", param.Func.Name())
+	}
+	// check gas, fee and value
+	mgval := new(big.Int).Mul(new(big.Int).SetUint64(tx.Gas()), tx.GasPrice())
+	mgval.Add(mgval, fee)
+	mgval.Add(mgval, fsnValue)
+	if balance := state.GetBalance(common.SystemAssetID, from); balance.Cmp(mgval) < 0 {
+		return fmt.Errorf("insufficient balance(%v), need %v = (gas:%v * price:%v + value:%v + fee:%v)", balance, mgval, tx.Gas(), tx.GasPrice(), fsnValue, fee)
+	}
+	return nil
+}
+
+func (pool *TxPool) validateFsnContractTx(tx *types.Transaction) error {
+	to := tx.To()
+	if !common.IsFsnContractCall(to) {
+		return nil
+	}
+	if tx.Value().Sign() != 0 {
+		return fmt.Errorf("FsnContract address is non-paybale")
+	}
+
+	from, _ := types.Sender(pool.signer, tx) // already validated
+	state := pool.currentState
+	height := common.BigMaxUint64
+	timestamp := uint64(time.Now().Unix())
+
+	input := tx.Data()
+	funcType := common.GetFsnFuncType(input)
+	fee := vm.RequiredFee(input)
+	fsnValue := big.NewInt(0)
+
+	contract := vm.NewFSNContractBase(input)
+
+	switch funcType {
+	case common.GenNotationFunc:
+		if n := state.GetNotation(from); n != 0 {
+			return fmt.Errorf("Account %x already has notation %d", from, n)
+		}
+
+	case common.GenAssetFunc:
+		genAssetParam, err := contract.GetGenAssetParam()
+		if err != nil {
+			return err
+		}
+		if err := genAssetParam.Check(height); err != nil {
+			return err
+		}
+
+	case common.SendAssetFunc:
+		sendAssetParam, err := contract.GetSendAssetParam(state)
+		if err != nil {
+			return err
+		}
+		if err := sendAssetParam.Check(height); err != nil {
+			return err
+		}
+		assetID := sendAssetParam.AssetID
+		if assetID == common.SystemAssetID {
+			fsnValue = sendAssetParam.Value
+		} else if state.GetBalance(assetID, from).Cmp(sendAssetParam.Value) < 0 {
+			return fmt.Errorf("SendAsset: not enough asset")
+		}
+
+	case common.TimeLockFunc:
+		timeLockParam, err := contract.GetTimeLockParam(state)
+		if err != nil {
+			return err
+		}
+		if timeLockParam.Type == common.TimeLockToAsset {
+			if timeLockParam.StartTime > timestamp {
+				return fmt.Errorf("TimeLockToAsset: Start time must be less than now")
+			}
+			timeLockParam.EndTime = common.TimeLockForever
+		}
+		if err := timeLockParam.Check(height, timestamp); err != nil {
+			return err
+		}
+
+		start := timeLockParam.StartTime
+		end := timeLockParam.EndTime
+		needValue := common.NewTimeLock(&common.TimeLockItem{
+			StartTime: common.MaxUint64(start, timestamp),
+			EndTime:   end,
+			Value:     new(big.Int).SetBytes(timeLockParam.Value.Bytes()),
+		})
+		if err := needValue.IsValid(); err != nil {
+			return err
+		}
+		assetID := timeLockParam.AssetID
+		switch timeLockParam.Type {
+		case common.AssetToTimeLock:
+			if assetID == common.SystemAssetID {
+				fsnValue = timeLockParam.Value
+			} else if state.GetBalance(assetID, from).Cmp(timeLockParam.Value) < 0 {
+				return fmt.Errorf("AssetToTimeLock: not enough asset")
+			}
+		case common.TimeLockToTimeLock:
+			if state.GetTimeLockBalance(assetID, from).Cmp(needValue) < 0 {
+				return fmt.Errorf("TimeLockToTimeLock: not enough time lock balance")
+			}
+		case common.TimeLockToAsset:
+			if state.GetTimeLockBalance(assetID, from).Cmp(needValue) < 0 {
+				return fmt.Errorf("TimeLockToAsset: not enough time lock balance")
+			}
+		}
+
+	case common.BuyTicketFunc:
+		buyTicketParam, err := contract.GetBuyTicketParam(timestamp)
+		if err != nil {
+			return err
+		}
+		if err := buyTicketParam.Check(height, timestamp, 0); err != nil {
+			return err
+		}
+
+		start := buyTicketParam.Start
+		end := buyTicketParam.End
+		value := common.TicketPrice(height)
+		needValue := common.NewTimeLock(&common.TimeLockItem{
+			StartTime: common.MaxUint64(start, timestamp),
+			EndTime:   end,
+			Value:     value,
+		})
+		if err := needValue.IsValid(); err != nil {
+			return err
+		}
+
+		if state.GetTimeLockBalance(common.SystemAssetID, from).Cmp(needValue) < 0 {
+			fsnValue = value
+		}
+
+		found := false
+		var oldTxHash common.Hash
+		pool.all.Range(func(hash common.Hash, tx1 *types.Transaction) bool {
+			if tx1 != tx && tx1.IsBuyTicketTx() {
+				sender, _ := types.Sender(pool.signer, tx1)
+				if from == sender {
+					if tx.Nonce() < tx1.Nonce() {
+						oldTxHash = hash
+					} else if tx.Nonce() > tx1.Nonce() {
+						found = true
+					}
+					return false
+				}
+			}
+			return true
+		})
+		if found == true {
+			return fmt.Errorf("%x has already bought a ticket in txpool", from)
+		}
+		if oldTxHash != (common.Hash{}) {
+			common.DebugInfo("remove old buy ticket tx", "hash", oldTxHash)
+			pool.removeTx(oldTxHash, true)
+		}
+
+	case common.AssetValueChangeFunc:
+		assetValueChangeParamEx, err := contract.GetAssetValueChangeExParam(from)
+		if err != nil {
+			return err
+		}
+		if err := assetValueChangeParamEx.Check(height); err != nil {
+			return err
+		}
+
+		assetID := assetValueChangeParamEx.AssetID
+		asset, err := state.GetAsset(assetID)
+		if err != nil {
+			return fmt.Errorf("%x asset not found", assetID)
+		}
+
+		if !asset.CanChange {
+			return fmt.Errorf("%x asset can't inc or dec", assetID)
+		}
+
+		if asset.Owner != from {
+			return fmt.Errorf("can only be changed by owner")
+		}
+
+		if asset.Owner != assetValueChangeParamEx.To && !assetValueChangeParamEx.IsInc {
+			err := fmt.Errorf("decrement can only happen to asset's own account")
+			return err
+		}
+
+		if !assetValueChangeParamEx.IsInc {
+			if state.GetBalance(assetID, assetValueChangeParamEx.To).Cmp(assetValueChangeParamEx.Value) < 0 {
+				return fmt.Errorf("decAsset: not enough asset")
+			}
+		}
+
+	case common.MakeSwapFuncExt:
+		makeSwapParam, err := contract.GetMakeSwapParam()
+		if err != nil {
+			return err
+		}
+		if err := makeSwapParam.Check(height, timestamp); err != nil {
+			return err
+		}
+
+		fromAssetID := makeSwapParam.FromAssetID
+		toAssetID := makeSwapParam.ToAssetID
+
+		if _, err := state.GetAsset(toAssetID); err != nil {
+			return fmt.Errorf("ToAssetID asset %x not found", toAssetID)
+		}
+
+		if fromAssetID == common.OwnerUSANAssetID {
+			notation := state.GetNotation(from)
+			if notation == 0 {
+				return fmt.Errorf("the from address does not have a notation")
+			}
+		} else {
+			total := new(big.Int).Mul(makeSwapParam.MinFromAmount, makeSwapParam.SwapSize)
+			start := makeSwapParam.FromStartTime
+			end := makeSwapParam.FromEndTime
+			useAsset := start == common.TimeLockNow && end == common.TimeLockForever
+
+			if useAsset == true {
+				if fromAssetID == common.SystemAssetID {
+					fsnValue = total
+				} else if state.GetBalance(fromAssetID, from).Cmp(total) < 0 {
+					return fmt.Errorf("MakeSwap: not enough from asset")
+				}
+			} else {
+				needValue := common.NewTimeLock(&common.TimeLockItem{
+					StartTime: common.MaxUint64(start, timestamp),
+					EndTime:   end,
+					Value:     total,
+				})
+				if err := needValue.IsValid(); err != nil {
+					return err
+				}
+				available := state.GetTimeLockBalance(fromAssetID, from)
+				if available.Cmp(needValue) < 0 {
+					if fromAssetID == common.SystemAssetID {
+						fsnValue = total
+					} else if state.GetBalance(fromAssetID, from).Cmp(total) < 0 {
+						return fmt.Errorf("MakeSwap: not enough time lock or asset balance")
+					}
+				}
+			}
+		}
+
+	case common.RecallSwapFunc:
+		recallSwapParam, err := contract.GetRecallSwapParam()
+		if err != nil {
+			return err
+		}
+
+		swapID := recallSwapParam.SwapID
+		swap, err := state.GetSwap(swapID)
+		if err != nil {
+			return fmt.Errorf("RecallSwap: %x Swap not found", swapID)
+		}
+
+		if swap.Owner != from {
+			return fmt.Errorf("Must be swap onwer can recall")
+		}
+
+		if err := recallSwapParam.Check(height, &swap); err != nil {
+			return err
+		}
+
+	case common.TakeSwapFuncExt:
+		takeSwapParam, err := contract.GetTakeSwapParam()
+		if err != nil {
+			return err
+		}
+
+		swapID := takeSwapParam.SwapID
+		swap, err := state.GetSwap(swapID)
+		if err != nil {
+			return fmt.Errorf("TakeSwap: %x Swap not found", swapID)
+		}
+
+		if err := takeSwapParam.Check(height, &swap, timestamp); err != nil {
+			return err
+		}
+
+		if err := common.CheckSwapTargets(swap.Targes, from); err != nil {
+			return err
+		}
+
+		fromAssetID := swap.FromAssetID
+		toAssetID := swap.ToAssetID
+
+		if fromAssetID == common.OwnerUSANAssetID {
+			notation := state.GetNotation(swap.Owner)
+			if notation == 0 || notation != swap.Notation {
+				return fmt.Errorf("notation in swap is no longer valid")
+			}
+		}
+
+		toTotal := new(big.Int).Mul(swap.MinToAmount, takeSwapParam.Size)
+		toStart := swap.ToStartTime
+		toEnd := swap.ToEndTime
+		toUseAsset := toStart == common.TimeLockNow && toEnd == common.TimeLockForever
+
+		if toUseAsset == true {
+			if toAssetID == common.SystemAssetID {
+				fsnValue = toTotal
+			} else if state.GetBalance(swap.ToAssetID, from).Cmp(toTotal) < 0 {
+				return fmt.Errorf("TakeSwap: not enough from asset")
+			}
+		} else {
+			toNeedValue := common.NewTimeLock(&common.TimeLockItem{
+				StartTime: common.MaxUint64(toStart, timestamp),
+				EndTime:   toEnd,
+				Value:     toTotal,
+			})
+			isValid := true
+			if err := toNeedValue.IsValid(); err != nil {
+				isValid = false
+			}
+			if isValid && state.GetTimeLockBalance(toAssetID, from).Cmp(toNeedValue) < 0 {
+				if toAssetID == common.SystemAssetID {
+					fsnValue = toTotal
+				} else if state.GetBalance(toAssetID, from).Cmp(toTotal) < 0 {
+					return fmt.Errorf("TakeSwap: not enough time lock or asset balance")
+				}
+			}
+		}
+
+	case common.RecallMultiSwapFunc:
+		recallSwapParam, err := contract.GetRecallMultiSwapParam()
+		if err != nil {
+			return err
+		}
+
+		swapID := recallSwapParam.SwapID
+		swap, err := state.GetMultiSwap(swapID)
+		if err != nil {
+			return fmt.Errorf("RecallMultiSwap: %x Swap not found", swapID)
+		}
+
+		if err := recallSwapParam.Check(height, &swap); err != nil {
+			return err
+		}
+
+		isMortgage := swap.IsMortgage()
+		isDealedMortgage := isMortgage && swap.SwapSize.Sign() == 0
+
+		if !isDealedMortgage {
+			if from != swap.Owner {
+				return fmt.Errorf("Must be swap onwer can recall")
+			}
+			break // end of non-dealed
+		}
+
+		lender := swap.GetLender()
+		lastEnd := swap.GetLastToEndTime()
+		isExpired := timestamp > lastEnd
+		if isExpired {
+			if from != lender {
+				return fmt.Errorf("the mortgage is expired, only the lender can process it")
+			}
+			break // end of expired
+		}
+
+		if from != swap.Owner {
+			return fmt.Errorf("the mortgage is still effective, only the borrower can process it")
+		}
+
+		value, err := pool.checkToAssets(from, &swap, big.NewInt(1))
+		if err != nil {
+			return err
+		}
+		fsnValue.Add(fsnValue, value)
+
+	case common.MakeMultiSwapFunc:
+		makeSwapParam, err := contract.GetMakeMultiSwapParam()
+		if err != nil {
+			return err
+		}
+		if err := makeSwapParam.Check(height, timestamp); err != nil {
+			return err
+		}
+
+		fromAssetIDs := makeSwapParam.FromAssetID
+		toAssetIDs := makeSwapParam.ToAssetID
+
+		for _, toAssetID := range toAssetIDs {
+			if _, err := state.GetAsset(toAssetID); err != nil {
+				return fmt.Errorf("ToAssetID asset %x not found", toAssetID)
+			}
+		}
+
+		ln := len(fromAssetIDs)
+
+		useAsset := make([]bool, ln)
+		total := make([]*big.Int, ln)
+		needValue := make([]*common.TimeLock, ln)
+
+		accountBalances := make(map[common.Hash]*big.Int)
+		accountTimeLockBalances := make(map[common.Hash]*common.TimeLock)
+
+		isMortgage := makeSwapParam.IsMortgage()
+		if isMortgage {
+			totalInterest := makeSwapParam.GetInterest()
+			fsnValue.Add(fsnValue, totalInterest)
+		}
+
+		for i := 0; i < ln; i++ {
+			if _, exist := accountBalances[fromAssetIDs[i]]; !exist {
+				balance := state.GetBalance(fromAssetIDs[i], from)
+				timelock := state.GetTimeLockBalance(fromAssetIDs[i], from)
+				accountBalances[fromAssetIDs[i]] = new(big.Int).Set(balance)
+				accountTimeLockBalances[fromAssetIDs[i]] = timelock.Clone()
+			}
+
+			total[i] = new(big.Int).Mul(makeSwapParam.MinFromAmount[i], makeSwapParam.SwapSize)
+			start := makeSwapParam.FromStartTime[i]
+			end := makeSwapParam.FromEndTime[i]
+			useAsset[i] = start == common.TimeLockNow && end == common.TimeLockForever
+			if useAsset[i] == false {
+				needValue[i] = common.NewTimeLock(&common.TimeLockItem{
+					StartTime: common.MaxUint64(start, timestamp),
+					EndTime:   end,
+					Value:     total[i],
+				})
+				if err := needValue[i].IsValid(); err != nil {
+					return err
+				}
+			}
+		}
+
+		ln = len(fromAssetIDs)
+		// check balances first
+		for i := 0; i < ln; i++ {
+			balance := accountBalances[fromAssetIDs[i]]
+			timeLockBalance := accountTimeLockBalances[fromAssetIDs[i]]
+			if useAsset[i] == true {
+				if balance.Cmp(total[i]) < 0 {
+					return fmt.Errorf("not enough from asset")
+				}
+				balance.Sub(balance, total[i])
+				if fromAssetIDs[i] == common.SystemAssetID {
+					fsnValue.Add(fsnValue, total[i])
+				}
+			} else {
+				if timeLockBalance.Cmp(needValue[i]) < 0 {
+					if balance.Cmp(total[i]) < 0 {
+						return fmt.Errorf("not enough time lock or asset balance")
+					}
+
+					balance.Sub(balance, total[i])
+					if fromAssetIDs[i] == common.SystemAssetID {
+						fsnValue.Add(fsnValue, total[i])
+					}
+					totalValue := common.NewTimeLock(&common.TimeLockItem{
+						StartTime: timestamp,
+						EndTime:   common.TimeLockForever,
+						Value:     total[i],
+					})
+					timeLockBalance.Add(timeLockBalance, totalValue)
+				}
+				timeLockBalance.Sub(timeLockBalance, needValue[i])
+			}
+		}
+
+	case common.TakeMultiSwapFunc:
+		takeSwapParam, err := contract.GetTakeMultiSwapParam()
+		if err != nil {
+			return err
+		}
+
+		swapID := takeSwapParam.SwapID
+		swap, err := state.GetMultiSwap(swapID)
+		if err != nil {
+			return fmt.Errorf("Swap not found")
+		}
+
+		if err := takeSwapParam.Check(height, &swap, timestamp); err != nil {
+			return err
+		}
+
+		if err := common.CheckSwapTargets(swap.Targes, from); err != nil {
+			return err
+		}
+
+		value, err := pool.checkToAssets(from, &swap, takeSwapParam.Size)
+		if err != nil {
+			return err
+		}
+		fsnValue.Add(fsnValue, value)
+
+	default:
+		return fmt.Errorf("Unsupported FsnContract func '%v'", funcType.Name())
 	}
 	// check gas, fee and value
 	mgval := new(big.Int).Mul(new(big.Int).SetUint64(tx.Gas()), tx.GasPrice())

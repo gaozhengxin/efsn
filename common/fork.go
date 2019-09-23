@@ -67,3 +67,7 @@ func IsMultipleMiningCheckingEnabled(blockNumber *big.Int) bool {
 func IsMortgageEnabled(blockNumber *big.Int) bool {
 	return IsHardFork(2, blockNumber)
 }
+
+func IsFsnContractEnabled(blockNumber *big.Int) bool {
+	return IsHardFork(2, blockNumber)
+}

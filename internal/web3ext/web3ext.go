@@ -1068,6 +1068,11 @@ web3._extend({
 				web3._extend.formatters.inputDefaultBlockNumberFormatter
 			]
 		}),
+		new web3._extend.Method({
+			name: 'getFSNContractInfo',
+			call: 'fsn_getFSNContractInfo',
+			params: 0
+		}),
 	],
 	properties:[
 		new web3._extend.Property({

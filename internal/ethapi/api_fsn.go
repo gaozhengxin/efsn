@@ -15,6 +15,7 @@ import (
 	"github.com/FusionFoundation/efsn/core/rawdb"
 	"github.com/FusionFoundation/efsn/core/state"
 	"github.com/FusionFoundation/efsn/core/types"
+	"github.com/FusionFoundation/efsn/core/vm"
 	"github.com/FusionFoundation/efsn/log"
 	"github.com/FusionFoundation/efsn/rlp"
 	"github.com/FusionFoundation/efsn/rpc"
@@ -369,7 +370,9 @@ func (s *PublicFusionAPI) getIDByTxHash(ctx context.Context, hash common.Hash, l
 		receipt := receipts[index]
 
 		for _, log := range receipt.Logs {
-			if log.Address != common.FSNCallAddress {
+			switch log.Address {
+			case common.FSNCallAddress, common.FSNContractAddress:
+			default:
 				continue
 			}
 			maps := make(map[string]interface{})
@@ -469,6 +472,19 @@ func (s *PublicFusionAPI) GetStakeInfo(ctx context.Context, blockNr rpc.BlockNum
 		stakeInfo.StakeInfo[v.Owner] = uint64(len(v.Tickets))
 	}
 	return stakeInfo, nil
+}
+
+// GetFSNContractInfo
+type FSNContractInfo struct {
+	ABI     string         `json:"abi"`
+	ADDRESS common.Address `json:"address"`
+}
+
+func (s *PublicFusionAPI) GetFSNContractInfo(ctx context.Context) *FSNContractInfo {
+	return &FSNContractInfo{
+		ABI:     vm.FSNContractABICompact,
+		ADDRESS: common.FSNContractAddress,
+	}
 }
 
 //--------------------------------------------- PublicFusionAPI buile send tx args-------------------------------------

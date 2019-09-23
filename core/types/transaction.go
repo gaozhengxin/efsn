@@ -251,16 +251,24 @@ func (tx *Transaction) RawSignatureValues() (*big.Int, *big.Int, *big.Int) {
 	return tx.data.V, tx.data.R, tx.data.S
 }
 
+func (tx *Transaction) GetFsnFuncType() common.FSNCallFunc {
+	to := tx.To()
+	if common.IsFsnCall(to) {
+		param := common.FSNCallParam{}
+		rlp.DecodeBytes(tx.Data(), &param)
+		return param.Func
+	} else if common.IsFsnContractCall(to) {
+		return common.GetFsnFuncType(tx.Data())
+	}
+	return common.EmptyFunc
+}
+
 func (tx *Transaction) IsBuyTicketTx() bool {
-	param := common.FSNCallParam{}
-	rlp.DecodeBytes(tx.Data(), &param)
-	return param.Func == common.BuyTicketFunc
+	return tx.GetFsnFuncType() == common.BuyTicketFunc
 }
 
 func (tx *Transaction) GetOrder() int {
-	param := common.FSNCallParam{}
-	rlp.DecodeBytes(tx.Data(), &param)
-	switch param.Func {
+	switch tx.GetFsnFuncType() {
 	case common.ReportIllegalFunc:
 		return 1000
 	case common.BuyTicketFunc:
