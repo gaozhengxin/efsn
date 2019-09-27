@@ -13,6 +13,7 @@ import (
 	"github.com/FusionFoundation/efsn/accounts"
 	"github.com/FusionFoundation/efsn/common"
 	"github.com/FusionFoundation/efsn/common/hexutil"
+	"github.com/FusionFoundation/efsn/consensus/datong"
 	"github.com/FusionFoundation/efsn/core/rawdb"
 	"github.com/FusionFoundation/efsn/core/state"
 	"github.com/FusionFoundation/efsn/core/types"
@@ -243,6 +244,7 @@ func (s *PublicFusionAPI) AllTicketsByAddress(ctx context.Context, address commo
 
 // TxAndReceipt wacom
 type TxAndReceipt struct {
+	FsnTxInput   interface{}            `json:"fsnTxInput,omitempty"`
 	Tx           *RPCTransaction        `json:"tx"`
 	Receipt      map[string]interface{} `json:"receipt"`
 	ReceiptFound bool                   `json:"receiptFound"`
@@ -292,6 +294,25 @@ func (s *PublicFusionAPI) GetTransactionAndReceipt(ctx context.Context, hash com
 	}
 	from, _ := types.Sender(signer, tx)
 
+	var (
+		fsnLogTopic string
+		fsnLogData  interface{}
+		fsnTxInput  interface{}
+	)
+
+	if common.IsFsnCall(tx.To()) && len(receipt.Logs) > 0 && len(receipt.Logs[0].Topics) > 0 {
+		log := receipt.Logs[0]
+		topic := log.Topics[0]
+		fsnCallFunc := common.FSNCallFunc(topic[common.HashLength-1])
+		fsnLogTopic = fsnCallFunc.Name()
+		if decodedLog, err := datong.DecodeLogData(log.Data); err == nil {
+			fsnLogData = decodedLog
+		}
+		if decoded, err := datong.DecodeTxInput(orgTx.Input); err == nil {
+			fsnTxInput = decoded
+		}
+	}
+
 	fields := map[string]interface{}{
 		"blockHash":         blockHash,
 		"blockNumber":       hexutil.Uint64(blockNumber),
@@ -304,6 +325,11 @@ func (s *PublicFusionAPI) GetTransactionAndReceipt(ctx context.Context, hash com
 		"contractAddress":   nil,
 		"logs":              receipt.Logs,
 		"logsBloom":         receipt.Bloom,
+	}
+
+	if len(fsnLogTopic) != 0 {
+		fields["fsnLogTopic"] = fsnLogTopic
+		fields["fsnLogData"] = fsnLogData
 	}
 
 	// Assign receipt status or post state.
@@ -323,6 +349,7 @@ func (s *PublicFusionAPI) GetTransactionAndReceipt(ctx context.Context, hash com
 		Tx:           orgTx,
 		Receipt:      fields,
 		ReceiptFound: true,
+		FsnTxInput:   fsnTxInput,
 	}, nil
 }
 
