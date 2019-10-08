@@ -26,6 +26,9 @@ debug:
 bootnode:
 	build/env.sh go run build/ci.go install ./cmd/bootnode
 
+mongosync:
+	build/env.sh go run build/ci.go install ./cmd/mongosync
+
 swarm:
 	build/env.sh go run build/ci.go install ./cmd/swarm
 	@echo "Done building."
