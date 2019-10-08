@@ -97,8 +97,8 @@ func Sync(block *types.Block, receipts types.Receipts, state *state.StateDB) {
 
 func syncTxs(txs []*ethapi.TxAndReceipt) {
 	log.Info("mongodb ready ==== syncTxs() ====")
-	BlockLock.Lock()
-	defer BlockLock.Unlock()
+	//BlockLock.Lock()
+	//defer BlockLock.Unlock()
 	mgoParseTxs(txs)
 }
 
@@ -1055,14 +1055,27 @@ func mgoParseTxs(txs []*ethapi.TxAndReceipt) {
 
 func parseTxs(txs []*ethapi.TxAndReceipt) {
 	logPrintAll("==== parseTxs() ====")
-	for _, tx := range txs {
+	/*for _, tx := range txs {
 		mtx, err := ParseTx(tx)
 		if err != nil {
 			log.Warn("==== parseTxs() ====", "error", err)
 			continue
 		}
 		go mgoInsertTx(mtx)
+	}*/
+	mtxs, _ := ParseTxs(txs)
+	go mgoInsertTxs(mtxs...)
+}
+
+func ParseTxs(txs []*ethapi.TxAndReceipt) (mtxs []mgoTx, err error) {
+	for _, tx := range txs {
+		mtx, err := ParseTx(tx)
+		if err != nil {
+			return mtxs, err
+		}
+		mtxs = append(mtxs, *mtx)
 	}
+	return
 }
 
 func ParseTx(tx *ethapi.TxAndReceipt) (mtx *mgoTx, err error) {
@@ -1175,9 +1188,34 @@ func parseBlock(block *types.Block, reverse bool) {
 	go mgoInsertBlock(mb, false)
 }
 
-func mgoInsertTx(mtx *mgoTx) {
+type txBuffer struct {
+	M sync.Mutex
+	Txs []mgoTx
+}
+
+var txBuf *txBuffer = &txBuffer{}
+
+func GetTxBuf() *txBuffer {
+	return txBuf
+}
+
+func txBufAdd(mtxs ...mgoTx) {
+	txBuf.M.Lock()
+	txBuf.Txs = append(txBuf.Txs, mtxs...)
+	txBuf.M.Unlock()
+}
+
+func TxBufPush() {
+	txBuf.M.Lock()
+	AddTxs(tbTransactions, txBuf.Txs...)
+	txBuf.Txs = []mgoTx{}
+	txBuf.M.Unlock()
+}
+
+func mgoInsertTxs(mtxs ...mgoTx) {
 	logPrintAll("==== mgoInsertTx() ====")
-	AddTx(tbTransactions, mtx)
+	txBufAdd(mtxs...)
+	//AddTxs(tbTransactions, mtxs...)
 }
 
 func mgoInsertBlock(mb *mgoBlock, reverse bool) {

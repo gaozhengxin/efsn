@@ -368,18 +368,24 @@ func DeleteTransaction(table string, mt *mgoTransaction) {
 	}
 }
 
-func AddTx(table string, mtx *mgoTx) {
+func AddTxs(table string, mtxs ...mgoTx) {
 	logPrintAll("==== AddTx() ====")
 	collectionTable := getCollection(table)
 	if collectionTable == nil {
 		log.Warn("getCollection()", "table", table, "collectionTable", "nil")
 		return
 	}
-	err := collectionTable.Insert(mtx)
+	var docs []interface{}
+	for _, mtx := range mtxs {
+		docs = append(docs, mtx)
+	}
+	err := collectionTable.Insert(docs...)
 	if err == nil {
-		logPrintAll("==== AddTx() ====", "Insert success: mgoTx hash", mtx.Hash)
+		//logPrintAll("==== AddTx() ====", "Insert success: mgoTx hash", mtx.Hash)
+		logPrintAll("==== AddTx() ====", "Insert success: ", len(mtxs))
 	} else {
-		logPrintAll("==== AddTx() ====", "Insert failed: mgoTx hash", mtx.Hash, "error", err)
+		//logPrintAll("==== AddTx() ====", "Insert failed: mgoTx hash", mtx.Hash, "error", err)
+		logPrintAll("==== AddTx() ====", "Insert failed: ", len(mtxs), "error", err)
 	}
 }
 
