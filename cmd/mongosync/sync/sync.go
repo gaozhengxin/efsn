@@ -176,6 +176,7 @@ func Sync() {
 					wg.Wait()
 				}
 				head = head + n
+				mongodb.TxBufPush()
 			}
 		}
 	}
