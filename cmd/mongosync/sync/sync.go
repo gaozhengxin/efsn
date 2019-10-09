@@ -183,6 +183,10 @@ func Sync() {
 	mongodb.TxBufPush()
 }
 
+func StopSync() {
+	mongodb.TxBufPush()
+}
+
 var (
 	console *cnsl.Console
 	printer *bytes.Buffer
