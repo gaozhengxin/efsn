@@ -32,11 +32,13 @@ func init() {
 	glog.Root().SetHandler(glog.LvlFilterHandler(glog.LvlDebug, glog.StreamHandler(os.Stderr, glog.TerminalFormat(true))))
 }
 
-var myaddrs []string  = []string{"0x2b1a3eca81ba03a9a4c95f4a04679c90838d7165"}
+var Myaddrs []string  = []string{"0x2b1a3eca81ba03a9a4c95f4a04679c90838d7165"}
 
-var endpoint = "/home/ezreal/fsn_mongo/main1/efsn.ipc"
+var Endpoint = "/home/ezreal/fsn_mongo/main1/efsn.ipc"
 
 var MaxGoroutineNumber uint64 = 1000
+
+var StartBlock uint64 = 0
 
 // 选择需要写入数据库的交易
 var txFilter func(txrcp *ethapi.TxAndReceipt) bool = func(txrcp *ethapi.TxAndReceipt) bool {
@@ -47,7 +49,7 @@ func RegisterTxFilter(callback func(txrcp *ethapi.TxAndReceipt) bool) {
 	txFilter = callback
 }
 
-/*var txFilter = func(txrcp *ethapi.TxAndReceipt) (add bool) {
+var TxFilter2 = func(txrcp *ethapi.TxAndReceipt) (add bool) {
 	defer func() {
 		if r := recover(); r != nil {
 			add = false
@@ -59,13 +61,13 @@ func RegisterTxFilter(callback func(txrcp *ethapi.TxAndReceipt) bool) {
 	//   2. to myaddr
 	//   3. timelock tx to myaddr
 	// then return true
-	for _, myaddr := range myaddrs {
-		if strings.EqualFold(txrcp.Receipt["from"].(string),myaddr) || strings.EqualFold(txrcp.Receipt["to"].(string), myaddr) || strings.EqualFold(txrcp.Receipt["fsnLogData"].(map[string]interface{})["To"].(string), myaddr) {
+	for _, Myaddr := range Myaddrs {
+		if strings.EqualFold(txrcp.Receipt["from"].(string),Myaddr) || strings.EqualFold(txrcp.Receipt["to"].(string), Myaddr) || strings.EqualFold(txrcp.Receipt["fsnLogData"].(map[string]interface{})["To"].(string), Myaddr) {
 			return true
 		}
 	}
 	return false
-}*/
+}
 
 func Sync() {
 	ch := make(chan uint64, 1)
@@ -85,7 +87,7 @@ func Sync() {
 		}
 	}()
 
-	var head uint64 = 0
+	var head uint64 = StartBlock
 	var total uint64 = 0
 	h := head
 	var ph uint64 = 0
@@ -205,7 +207,7 @@ var (
 )
 
 func ipcInit() {
-	client, err := rpc.Dial(endpoint)
+	client, err := rpc.Dial(Endpoint)
 	if err != nil {
 		log.Fatal(err)
 		return
