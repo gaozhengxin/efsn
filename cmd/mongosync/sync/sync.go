@@ -164,7 +164,7 @@ func Sync() {
 						if mongodb.Mongo {
 							mongodb.SyncTxs(txs)
 							fmt.Printf("\n\nbuf len: %v\n\n", len(mongodb.GetTxBuf().Txs))
-							if len(mongodb.GetTxBuf().Txs) >= 10000 {
+							if len(mongodb.GetTxBuf().Txs) >= 1000 {
 								mongodb.TxBufPush()
 							}
 						}
