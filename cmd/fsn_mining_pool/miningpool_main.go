@@ -1,7 +1,7 @@
 package main
 
 import (
-	//"fmt"
+	"fmt"
 	"math/big"
 	"time"
 	"github.com/FusionFoundation/efsn/common"
@@ -20,33 +20,6 @@ func main() {
 	InitMongo()
 	Run()
 }
-
-/*
-func main() {
-	InitMongo()
-
-	mp := GetMinerPool()
-	mpLock.Lock()
-	mp.Address = common.HexToAddress("0xd65f00dfd58d814f9de157fdddf6669677299c84")
-	mpLock.Unlock()
-
-	usr := common.HexToAddress("0xeddf4A474BEA02aC6184B445953Bbe0d98efFbbf")
-	ast := Asset([]Point{Point{T:500, V:big.NewInt(100)}, Point{T:1000, V:big.NewInt(0)}})
-	err := SetUserAsset(usr, ast)
-	if err != nil {
-		panic(err)
-	}
-	ast2 := GetUserAsset(usr)
-
-	fmt.Printf("\n\nast:\n%+v\n\n", ast2)
-
-	sh := GetSyncHead()
-	fmt.Printf("\nsync head:\n%v\n\n", sh)
-	SetHead(sh)
-	h := GetHead()
-	fmt.Printf("\nhead:\n%v\n\n", h)
-}
-*/
 
 var (
 	InitialBlock uint64 = 200000
@@ -80,7 +53,7 @@ func DoDeposit(tx ethapi.TxAndReceipt) error {
 
 	ast := GetUserAsset(from)
 	if ast != nil {
-		(*ast).Add(asset)
+		ast = (*ast).Add(asset)
 	} else {
 		ast = asset
 	}
@@ -244,7 +217,8 @@ func Run() {
 		case <-examinetxstimer.C:
 			// do every minute
 			log.Info("examine transactions")
-			go func() {
+			ch := make(chan string)
+			go func(ch chan string) {
 				after := GetHead()
 				before := GetSyncHead() - 10
 				for before < InitialBlock || before <= after {
@@ -259,33 +233,63 @@ func Run() {
 					case "DEPOSIT":
 						err := DoDeposit(tx)
 						if err != nil {
-							panic(err)
+							ch <- err.Error()
+							return
 						}
 					default:
 					}
 				}
-				SetHead(before - 10)
+				var err error
+				for i := 0; i < 3; i++ {
+					err = SetHead(before - 10)
+					if err == nil {
+						break
+					}
+				}
+				if err != nil {
+					ch <- err.Error()
+				} else {
+					ch <- "ok"
+				}
+			}(ch)
+			if ret := <-ch; ret == "ok" {
+				log.Debug("renew timer")
 				examinetxstimer = time.NewTimer(time.Minute)
-			}()
+			} else {
+				panic(fmt.Errorf("examine txs error: %v", ret))
+			}
 		case m := <-WithdrawCh:
 			// do withdraw
 			log.Info("receive withdraw message")
-			go func() {
+			ch := make(chan string)
+			go func(ch chan string) {
 				err := DoWithdraw(m)
 				if err != nil {
-					panic(err)
+					ch <- err.Error()
+				} else {
+					ch <- "ok"
 				}
-			}()
+			}(ch)
+			if ret := <-ch; ret != "ok" {
+				panic(fmt.Errorf("withdraw error: %v", ret))
+			}
 		case <-timer.C:
 			// do everyday at 00:00
 			log.Info("start settle accounts")
-			go func() {
+			ch := make(chan string)
+			go func(chan string) {
 				err := SettleAccounts()
 				if err != nil {
-					panic(err)
+					ch <- err.Error()
+				} else {
+					ch <- "ok"
 				}
+			}(ch)
+			if ret := <-ch; ret == "ok" {
 				timer = NewZeroTimer()
-			}()
+			} else {
+				panic(fmt.Errorf("settle accounts error: %v", ret))
+			}
 		}
 	}
 }
