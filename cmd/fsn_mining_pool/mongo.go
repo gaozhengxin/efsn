@@ -61,7 +61,9 @@ func GetTxs(after, before uint64) []ethapi.TxAndReceipt {
 	dd := make([]interface{}, 0)
 	err := collectionTable.Find(bson.M{"receipt.fsnLogTopic":"TimeLockFunc", "receipt.fsnLogData.To":bson.M{"$regex":address,"$options":"i"}, "tx.blockNumber":bson.M{"$gte":after,"$lt":before}}).All(&dd)
 	if err != nil {
-		log.Warn("mongo GetTxs() ", "error", err)
+		if err.Error() != "not found" {
+			log.Warn("mongo GetTxs() ", "error", err)
+		}
 		return nil
 	}
 	if len(dd) > 0 {
@@ -131,7 +133,9 @@ func GetHead() (h uint64) {
 	d := make([]interface{}, 1)
 	err := collectionTable.Find(bson.M{"_id":"head"}).One(&d[0])
 	if err != nil {
-		log.Warn("mongo GetHead() fail", "error", err)
+		if err.Error() != "not found" {
+			log.Warn("mongo GetHead() failed", "error", err)
+		}
 		return 0
 	}
 	if len(d) > 0 && d[0] != nil {
@@ -164,7 +168,9 @@ func GetLastSettlePoint() (p uint64) {
 	d := make([]interface{}, 1)
 	err := collectionTable.Find(bson.M{"_id":"head"}).One(&d[0])
 	if err != nil {
-		log.Warn("mongo GetLastSettlePoint() fail", "error", err)
+		if err.Error() != "not found" {
+			log.Warn("mongo GetLastSettlePoint() fail", "error", err)
+		}
 		return 0
 	}
 	if len(d) > 0 && d[0] != nil {
@@ -197,6 +203,9 @@ func GetAllAssets() (uam *UserAssetMap) {
 	d := make([]bson.M, c)
 	err := collectionTable.Find(bson.M{}).All(&d)
 	if err != nil {
+		if err.Error() != "not found" {
+			log.Warn("mongo GetAllAssets() failed", "error", err)
+		}
 		return
 	}
 	for _, doc := range d {
@@ -247,7 +256,9 @@ func GetUserAsset(usr common.Address) *Asset {
 	d := make([]bson.M, 1)
 	err := collectionTable.Find(bson.M{"_id":id}).One(&d[0])
 	if err != nil {
-		log.Warn("mongo GetUserAsset() fail", "error", err)
+		if err.Error() != "not found" {
+			log.Warn("mongo GetUserAsset() fail", "error", err)
+		}
 		return nil
 	}
 	mgoast := mgoAsset{}
@@ -291,6 +302,9 @@ func GetMiningPoolBalance() *big.Int {
 	d := make([]bson.M, 1)
 	err := collectionTable.Find(bson.M{"_id":"balance"}).One(&d[0])
 	if err != nil {
+		if err.Error() != "not found" {
+			log.Warn("mongo GetMiningPoolBalance() failed", "error", err)
+		}
 		return nil
 	}
 	if d[0]["value"] != nil {
@@ -336,7 +350,6 @@ func ParseTxAndReceipt(obj bson.M) (tx ethapi.TxAndReceipt, err error) {
 			err = fmt.Errorf("mongo ParseTxAndReceipt fail, error: %v", r)
 		}
 	}()
-	fmt.Printf("\n\n%+v\n\n", obj)
 	//tx.FsnTxInput = 
 	tx.Tx = new(ethapi.RPCTransaction)
 	for k, v := range obj["tx"].(bson.M) {
@@ -380,6 +393,7 @@ func ParseTxAndReceipt(obj bson.M) (tx ethapi.TxAndReceipt, err error) {
 			tx.Receipt["fsnLogData"].(map[string]interface{})[k] = v
 		}
 	}
+	tx.Receipt["status"] = receipt["status"].(int)
 	tx.ReceiptFound = obj["receiptFound"].(bool)
 	return
 }

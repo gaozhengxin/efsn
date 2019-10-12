@@ -12,14 +12,10 @@ import (
 func main() {
 	// SetMinerPoolAccount
 	// SetFundPoolAccount
-	mpLock.Lock()
 	mp := GetMinerPool()
 	mp.Address = common.HexToAddress("0xd65f00dfd58d814f9de157fdddf6669677299c84")
-	mpLock.Unlock()
-	fpLock.Lock()
 	fp := GetFundPool()
 	fp.Address = common.HexToAddress("0xd65f00dfd58d814f9de157fdddf6669677299c84")
-	fpLock.Unlock()
 
 	InitMongo()
 	Run()
@@ -216,12 +212,13 @@ func CalculateUserProfits(totalProfit *big.Int, uam *UserAssetMap) []Profit {
 func GetTxType(tx ethapi.TxAndReceipt) (txtype string) {
 	defer func() {
 		if r := recover(); r != nil {
+			log.Warn("GetTxType failed", "error", r)
 			txtype = ""
 		}
 	}()
 	mp := GetMinerPool()
 	if tx.Receipt["fsnLogTopic"] == "TimeLockFunc" {
-		if tx.Receipt["status"] != 1 {
+		if tx.Receipt["status"].(int) != 1 {
 			return ""
 		}
 		to := tx.Receipt["fsnLogData"].(map[string]interface{})["To"].(common.Address)
@@ -233,7 +230,8 @@ func GetTxType(tx ethapi.TxAndReceipt) (txtype string) {
 }
 
 func Run() {
-	ticker := time.NewTicker(time.Minute)
+	log.Info("mining pool running")
+	examinetxstimer := time.NewTimer(5 * time.Second)
 	timer := NewZeroTimer()
 
 	h := GetHead()
@@ -243,8 +241,9 @@ func Run() {
 
 	for {
 		select {
-		case <-ticker.C:
+		case <-examinetxstimer.C:
 			// do every minute
+			log.Info("examine transactions")
 			go func() {
 				after := GetHead()
 				before := GetSyncHead() - 10
@@ -266,9 +265,11 @@ func Run() {
 					}
 				}
 				SetHead(before - 10)
+				examinetxstimer = time.NewTimer(time.Minute)
 			}()
 		case m := <-WithdrawCh:
 			// do withdraw
+			log.Info("receive withdraw message")
 			go func() {
 				err := DoWithdraw(m)
 				if err != nil {
@@ -277,13 +278,14 @@ func Run() {
 			}()
 		case <-timer.C:
 			// do everyday at 00:00
+			log.Info("start settle accounts")
 			go func() {
 				err := SettleAccounts()
 				if err != nil {
 					panic(err)
 				}
+				timer = NewZeroTimer()
 			}()
-			timer = NewZeroTimer()
 		}
 	}
 }
