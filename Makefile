@@ -29,6 +29,9 @@ bootnode:
 mongosync:
 	build/env.sh go run build/ci.go install ./cmd/mongosync
 
+miningpool:
+	build/env.sh go run build/ci.go install ./cmd/fsn_mining_pool/miningpool_main.go ./cmd/fsn_mining_pool/minerpool.go ./cmd/fsn_mining_pool/fundpool.go ./cmd/fsn_mining_pool/asset.go ./cmd/fsn_mining_pool/mongo.go
+
 swarm:
 	build/env.sh go run build/ci.go install ./cmd/swarm
 	@echo "Done building."
