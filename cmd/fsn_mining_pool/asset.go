@@ -72,6 +72,15 @@ func (a *Asset) Align(t uint64) {
 		}
 		*a = append(append([]Point{}, p), (*a)...)
 	}
+	h := 0
+	for i := 0; i < len(*a); i++ {
+		if (*a)[i].V == nil || (*a)[i].V.Cmp(big.NewInt(0)) == 0 {
+			h++
+		}
+	}
+	if h >= 1 {
+		*a = (*a)[h-1:]
+	}
 }
 
 func (a *Asset) Reduce() {
