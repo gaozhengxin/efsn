@@ -282,7 +282,7 @@ func AddDetainedProfit(p Profit) error {
 func SetMiningPoolBalance(bal *big.Int) {
 	log.Debug("mongo SetMiningPoolBalance()", "bal", bal)
 	collectionTable := database.C("Miningpool")
-	collectionTable.Upsert(bson.M{"_id":"balance","value":bal.String()})
+	collectionTable.Upsert(bson.M{"_id":"balance"}, bson.M{"_id":"balance","value":bal.String()})
 }
 
 func GetMiningPoolBalance() *big.Int {

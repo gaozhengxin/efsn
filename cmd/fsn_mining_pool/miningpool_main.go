@@ -245,38 +245,44 @@ func Run() {
 		select {
 		case <-ticker.C:
 			// do every minute
-			after := GetHead()
-			before := GetSyncHead() - 10
-			for before < InitialBlock || before <= after {
-				log.Debug("cannot find new transactions in mongodb")
-				time.Sleep(time.Second * 5)
-			}
-			// get txs from mongodb
-			txs := GetTxs(after, before)
-			for _, tx := range txs {
-				txtype := GetTxType(tx)
-				switch txtype {
-				case "DEPOSIT":
-					err := DoDeposit(tx)
-					if err != nil {
-						panic(err)
-					}
-				default:
+			go func() {
+				after := GetHead()
+				before := GetSyncHead() - 10
+				for before < InitialBlock || before <= after {
+					log.Debug("cannot find new transactions in mongodb")
+					time.Sleep(time.Second * 5)
 				}
-			}
-			SetHead(before - 10)
+				// get txs from mongodb
+				txs := GetTxs(after, before)
+				for _, tx := range txs {
+					txtype := GetTxType(tx)
+					switch txtype {
+					case "DEPOSIT":
+						err := DoDeposit(tx)
+						if err != nil {
+							panic(err)
+						}
+					default:
+					}
+				}
+				SetHead(before - 10)
+			}()
 		case m := <-WithdrawCh:
 			// do withdraw
-			err := DoWithdraw(m)
-			if err != nil {
-				panic(err)
-			}
+			go func() {
+				err := DoWithdraw(m)
+				if err != nil {
+					panic(err)
+				}
+			}()
 		case <-timer.C:
 			// do everyday at 00:00
-			err := SettleAccounts()
-			if err != nil {
-				panic(err)
-			}
+			go func() {
+				err := SettleAccounts()
+				if err != nil {
+					panic(err)
+				}
+			}()
 			timer = NewZeroTimer()
 		}
 	}

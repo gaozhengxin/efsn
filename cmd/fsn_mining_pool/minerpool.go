@@ -50,7 +50,8 @@ func (mp *MinerPool) SendFSN(acc common.Address, asset *Asset) (common.Hash, err
 	mpLock.Lock()
 	defer mpLock.Unlock()
 	// TODO
-	mp.Balance = getBalance()
+	bal := getBalance()
+	SetMiningPoolBalance(bal)
 	return common.Hash{}, nil
 }
 
