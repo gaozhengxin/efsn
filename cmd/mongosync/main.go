@@ -16,6 +16,8 @@ func init() {
 func initCmd() {
 	rootCmd.PersistentFlags().Uint64VarP(&sync.StartBlock, "startblock", "s", 0, "start syncing from")
 	rootCmd.PersistentFlags().StringVarP(&sync.Endpoint, "attach", "a", "", "ipc socket path")
+	rootCmd.PersistentFlags().StringVar(&sync.IpcDataDir, "ipcdatadir", "./ipccli", "ipc socket path")
+	rootCmd.PersistentFlags().StringVar(&sync.IpcDocRoot, "ipcdocroot", "./ipccli", "ipc socket path")
 	rootCmd.PersistentFlags().BoolVarP(&partial, "partial", "p", false, "sync txs from selected addresses")
 	rootCmd.PersistentFlags().StringSliceVar(&sync.Myaddrs, "addresses", []string{}, "addresses")
 }

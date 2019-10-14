@@ -40,6 +40,10 @@ var MaxGoroutineNumber uint64 = 1000
 
 var StartBlock uint64 = 0
 
+var IpcDataDir string
+
+var IpcDocRoot string
+
 // 选择需要写入数据库的交易
 var txFilter func(txrcp *ethapi.TxAndReceipt) bool = func(txrcp *ethapi.TxAndReceipt) bool {
 	return true
@@ -222,8 +226,8 @@ func ipcInit() {
 	printer = bytes.NewBufferString(s)
 
 	cfg := cnsl.Config{
-		DataDir: "/home/ezreal/fsn_mongo/ipccli",
-		DocRoot: "/home/ezreal/fsn_mongo/ipccli",
+		DataDir: IpcDataDir,
+		DocRoot: IpcDocRoot,
 		Client: client,
 		Printer: printer,
 	}
