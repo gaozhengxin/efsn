@@ -23,7 +23,7 @@ import (
 	"github.com/FusionFoundation/efsn/rpc"
 )
 
-func init() {
+func InitSync() {
 	color.NoColor = true
 	ipcInit()
 	mongodb.MongoInit()

@@ -24,6 +24,7 @@ var partial bool = false
 
 var rootCmd = &cobra.Command{
 	Run: func(cmd *cobra.Command, args []string) {
+		sync.InitSync()
 		if partial {
 			sync.RegisterTxFilter(sync.TxFilter2)
 		}
