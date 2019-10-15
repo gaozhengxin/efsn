@@ -74,7 +74,7 @@ func (fp *FundPool) PayProfits(profits []Profit) ([]common.Hash, []Profit) {
 	for _, p := range profits {
 		log.Debug("fund pool send profit", "profit", p)
 		ast, _ := NewAsset(p.Amount, 0, 0)
-		hash, err := fp.SendFSN(p.Address, ast)
+		hash, err := fp.SendAsset(p.Address, ast)
 		if err != nil {
 			detained = append(detained, p)
 			continue
@@ -84,8 +84,8 @@ func (fp *FundPool) PayProfits(profits []Profit) ([]common.Hash, []Profit) {
 	return hs, detained
 }
 
-func (fp *FundPool) SendFSN(acc common.Address, asset *Asset) ([]common.Hash, error) {
-	log.Debug("fund pool, SendFSN()", "to", acc, "asset", asset)
+func (fp *FundPool) SendAsset(acc common.Address, asset *Asset) ([]common.Hash, error) {
+	log.Debug("fund pool, SendAsset()", "to", acc, "asset", asset)
 	fpLock.Lock()
 	defer fpLock.Unlock()
 

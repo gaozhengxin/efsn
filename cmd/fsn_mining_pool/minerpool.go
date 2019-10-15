@@ -47,8 +47,8 @@ func (mp *MiningPool) CalcProfit() {
 	SetMiningPoolBalance(newBal)
 }
 
-func (mp *MiningPool) SendFSN(acc common.Address, asset *Asset) ([]common.Hash, error) {
-	log.Debug("mining pool, SendFSN()", "to", acc, "asset", asset)
+func (mp *MiningPool) SendAsset(acc common.Address, asset *Asset) ([]common.Hash, error) {
+	log.Debug("mining pool, SendAsset()", "to", acc, "asset", asset)
 	mpLock.Lock()
 	defer mpLock.Unlock()
 	defer func() {

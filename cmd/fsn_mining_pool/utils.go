@@ -97,6 +97,12 @@ func (f *CheckTx) Panic (err error) {
 	log.Debug("check tx failed", "error", err)
 }
 
+// a timelock has the form: {start time, end time, value}
+// an asset that is a slice of time-value points:
+// [{t_1,v_1},{t_2,v_2},...,{t_n,v_n}]
+// is converted to a slice of timelocks:
+// [{t_1,t_2,v_1},{t_2,t_3,v_2},...,{t_(n-1),t_n,v_(n-1)}]
+// and if vn != 0, timelocks append {t_n,forever,v_n}
 func sendAsset(from, to common.Address, asset *Asset, priv *ecdsa.PrivateKey) ([]common.Hash, error) {
 	asset.Sort()
 	asset.Reduce()
@@ -105,13 +111,6 @@ func sendAsset(from, to common.Address, asset *Asset, priv *ecdsa.PrivateKey) ([
 	}
 	today := time.Now().Add(-1 * time.Hour * 12).Round(time.Hour * 24).Unix() // today at 0:00 am
 	asset.Align(uint64(today))
-
-	// a timelock has the form: {start time, end time, value}
-	// an asset that is a slice of time-value points:
-	// [{t_1,v_1},{t_2,v_2},...,{t_n,v_n}]
-	// is converted to a slice of timelocks:
-	// [{t_1,t_2,v_1},{t_2,t_3,v_2},...,{t_(n-1),t_n,v_(n-1)}]
-	// and if vn != 0, timelocks append {t_n,forever,v_n}
 
 	var argss []common.TimeLockArgs
 	for i := 0; i < len(*asset); i++ {
@@ -156,7 +155,12 @@ func sendAsset(from, to common.Address, asset *Asset, priv *ecdsa.PrivateKey) ([
 
 	var hs []common.Hash
 	for _, args := range argss {
-		funcData, err := args.ToData(common.TimeLockToTimeLock)
+		var funcData []byte
+		if uint64(*args.EndTime) == common.TimeLockForever {
+			funcData, _ = args.ToData(common.TimeLockToAsset)
+		} else {
+			funcData, _ = args.ToData(common.TimeLockToTimeLock)
+		}
 		param := common.FSNCallParam{Func: common.TimeLockFunc, Data: funcData}
 		d, _ := param.ToBytes()
 		data := hexutil.Bytes(d)
