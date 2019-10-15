@@ -14,9 +14,9 @@ import (
 )
 
 func NewZeroTimer() *time.Timer {
-	now := time.Now().Round(time.Hour * 24)
-	next := now.Add(time.Hour * 24)
-	timer := time.NewTimer(next.Sub(now))
+	today := time.Now().Add(-1 * time.Hour * 12).Round(time.Hour * 24)
+	next := today.Add(time.Hour * 24)
+	timer := time.NewTimer(next.Sub(time.Now()))
 	return timer
 }
 
