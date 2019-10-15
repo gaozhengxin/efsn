@@ -3,7 +3,6 @@ package main
 import (
 	"fmt"
 	"math/big"
-	"os"
 	"strings"
 	"time"
 	"github.com/FusionFoundation/efsn/common"
@@ -47,19 +46,16 @@ func InitMongo() {
 	database = Session.DB(dbname)
 	fmt.Printf("mongodb mongoServerInit finished.\n")
 	InitOnce = false
-
-	//log.Root().SetHandler(log.LvlFilterHandler(log.LvlInfo, log.StreamHandler(os.Stderr, log.TerminalFormat(true))))
-	log.Root().SetHandler(log.LvlFilterHandler(log.LvlDebug, log.StreamHandler(os.Stderr, log.TerminalFormat(true))))
 }
 
 func GetTxs(after, before uint64) []ethapi.TxAndReceipt {
 	log.Debug("mongo GetTxs()", "after", after, "before", before)
-	mp := GetMinerPool()
+	mp := GetMiningPool()
 	address := mp.Address.Hex()
 	collectionTable := database.C("Transactions")
 	d := make([]ethapi.TxAndReceipt, 0)
 	dd := make([]interface{}, 0)
-	err := collectionTable.Find(bson.M{"receipt.fsnLogTopic":"TimeLockFunc", "receipt.fsnLogData.To":bson.M{"$regex":address,"$options":"i"}, "tx.blockNumber":bson.M{"$gte":after,"$lt":before}}).All(&dd)
+	err := collectionTable.Find(bson.M{"receipt.fsnLogTopic":"TimeLockFunc", "receipt.fsnLogData.AssetID":"0xffffffffffffffffffffffffffffffffffffffff", "receipt.fsnLogData.To":bson.M{"$regex":address,"$options":"i"}, "tx.blockNumber":bson.M{"$gte":after,"$lt":before}}).All(&dd)
 	if err != nil {
 		if err.Error() != "not found" {
 			log.Warn("mongo GetTxs() ", "error", err)
