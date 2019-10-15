@@ -1,28 +1,30 @@
 package main
 
 import (
+	"context"
+	"crypto/ecdsa"
 	"math/big"
 	"sync"
 	"github.com/FusionFoundation/efsn/common"
 	"github.com/FusionFoundation/efsn/log"
 )
 
-type MinerPool struct {
+type MiningPool struct {
 	Address common.Address
-	// key manager
+	Priv *ecdsa.PrivateKey
 	Profit *big.Int
 }
 
-var mp *MinerPool
+var mp *MiningPool
 
 var mpLock *sync.Mutex = new(sync.Mutex)
 
-func GetMinerPool() *MinerPool {
+func GetMiningPool() *MiningPool {
 	if mp == nil {
 		mpLock.Lock()
 		defer mpLock.Unlock()
 		if mp == nil {
-			mp = &MinerPool{}
+			mp = &MiningPool{}
 		}
 	}
 	return mp
@@ -30,13 +32,13 @@ func GetMinerPool() *MinerPool {
 
 // TODO
 /*
-func SetMinerPoolAccount(key manager) {
+func SetMiningPoolAccount(key manager) {
 	fpLock.Lock()
 	defer fpLock.Unlock()
 }
 */
 
-func (mp *MinerPool) CalcProfit() {
+func (mp *MiningPool) CalcProfit() {
 	mpLock.Lock()
 	defer mpLock.Unlock()
 	bal := GetMiningPoolBalance()
@@ -45,17 +47,24 @@ func (mp *MinerPool) CalcProfit() {
 	SetMiningPoolBalance(newBal)
 }
 
-func (mp *MinerPool) SendFSN(acc common.Address, asset *Asset) (common.Hash, error) {
-	log.Debug("miner pool, SendFSN()", "to", acc, "asset", asset)
+func (mp *MiningPool) SendFSN(acc common.Address, asset *Asset) ([]common.Hash, error) {
+	log.Debug("mining pool, SendFSN()", "to", acc, "asset", asset)
 	mpLock.Lock()
 	defer mpLock.Unlock()
-	// TODO
-	bal := getBalance()
-	SetMiningPoolBalance(bal)
-	return common.Hash{}, nil
+	defer func() {
+		bal := getBalance()
+		SetMiningPoolBalance(bal)
+	}()
+
+	return sendAsset(mp.Address, acc, asset, mp.Priv)
 }
 
 func getBalance() *big.Int {
-	// TODO
-	return big.NewInt(0)
+	client := GetRPCClient()
+	bal, err := client.BalanceAt(context.Background(), mp.Address, nil)
+	if err != nil {
+		log.Warn("mining pool getBalance() failed", "error", err)
+		return big.NewInt(0)
+	}
+	return bal
 }

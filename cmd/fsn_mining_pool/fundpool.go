@@ -1,6 +1,7 @@
 package main
 
 import (
+	"crypto/ecdsa"
 	"fmt"
 	"math/big"
 	"sync"
@@ -11,7 +12,7 @@ import (
 
 type FundPool struct {
 	Address common.Address
-	// key manager
+	Priv *ecdsa.PrivateKey
 }
 
 var  fp *FundPool
@@ -47,12 +48,12 @@ func (fp *FundPool) GetTotalOut() (total *Asset, err error) {
 	txs := GetTxFromAddress(fp.Address, after)
 	if len(txs) > 0 {
 		for _, tx := range txs {
-			if tx.Receipt["fsnLogTopic"] == "SendAssetFunc" {
+			if tx.Receipt["fsnLogTopic"] == "SendAssetFunc" && tx.Receipt["AssetID"] == "0xffffffffffffffffffffffffffffffffffffffff" {
 				amt := (*big.Int)(tx.Tx.Value)
 				ast, _ := NewAsset(amt, uint64(time.Now().Unix()), 0)
 				*total = *total.Add(ast)
 			}
-			if tx.Receipt["fsnLogTopic"] == "TimeLockFunc" {
+			if tx.Receipt["fsnLogTopic"] == "TimeLockFunc" && tx.Receipt["AssetID"] == "0xffffffffffffffffffffffffffffffffffffffff" {
 				start := tx.Receipt["fsnLogData"].(map[string]interface{})["StartTime"].(uint64)
 				end := tx.Receipt["fsnLogData"].(map[string]interface{})["EndTime"].(uint64)
 				amt := tx.Receipt["fsnLogData"].(map[string]interface{})["Value"].(*big.Int)
@@ -78,15 +79,15 @@ func (fp *FundPool) PayProfits(profits []Profit) ([]common.Hash, []Profit) {
 			detained = append(detained, p)
 			continue
 		}
-		hs = append(hs, hash)
+		hs = append(hs, hash...)
 	}
 	return hs, detained
 }
 
-func (fp *FundPool) SendFSN(acc common.Address, asset *Asset) (common.Hash, error) {
+func (fp *FundPool) SendFSN(acc common.Address, asset *Asset) ([]common.Hash, error) {
 	log.Debug("fund pool, SendFSN()", "to", acc, "asset", asset)
 	fpLock.Lock()
 	defer fpLock.Unlock()
-	// TODO
-	return common.Hash{}, nil
+
+	return sendAsset(fp.Address, acc, asset, fp.Priv)
 }
