@@ -3,25 +3,36 @@ package main
 import (
 	"fmt"
 	"math/big"
+	"os"
 	"time"
 	"github.com/FusionFoundation/efsn/common"
+	"github.com/FusionFoundation/efsn/crypto"
 	"github.com/FusionFoundation/efsn/internal/ethapi"
 	"github.com/FusionFoundation/efsn/log"
 )
 
+func init() {
+	//log.Root().SetHandler(log.LvlFilterHandler(log.LvlInfo, log.StreamHandler(os.Stderr, log.TerminalFormat(true))))
+	log.Root().SetHandler(log.LvlFilterHandler(log.LvlDebug, log.StreamHandler(os.Stderr, log.TerminalFormat(true))))
+}
+
 func main() {
-	// SetMinerPoolAccount
+	// SetMiningPoolAccount
+	mp := GetMiningPool()
+	mp.Address = common.HexToAddress("")
+	mp.Priv, _ = crypto.HexToECDSA("")
+
 	// SetFundPoolAccount
-	mp := GetMinerPool()
-	mp.Address = common.HexToAddress("0xd65f00dfd58d814f9de157fdddf6669677299c84")
 	fp := GetFundPool()
-	fp.Address = common.HexToAddress("0xd65f00dfd58d814f9de157fdddf6669677299c84")
+	fp.Priv, _ = crypto.HexToECDSA("")
+	fp.Address = common.HexToAddress("")
 
 	InitMongo()
 	Run()
 }
 
 var (
+	url string = "http://0.0.0.0:8554"
 	InitialBlock uint64 = 200000
 	FeeRate = big.NewRat(1,10)  // 0.1
 )
@@ -103,43 +114,53 @@ func NewWithdrawMsg(addr common.Address, amount *big.Int, start uint64, end uint
 	}
 }
 
+// SettleAccounts runs every day 0:00
+// first, calculate mining profit in the last settlement peroid
+// then calculates fund pool output among
+// last settle point (block height, kept in mongo)
+// and current head (block height)
+// then updates last settle point for next peroid
+// then calculates and pays every user's profit according to policy
 func SettleAccounts() error {
 	mpLock.Lock()
 	defer mpLock.Unlock()
 	fpLock.Lock()
 	defer fpLock.Unlock()
 
-	mp := GetMinerPool()
-	mp.CalcProfit()
+	mp := GetMiningPool()
 	fp := GetFundPool()
-	// 1. get fp out, replenish fp
+
+	// 1. calc mining pool profit
+	mp.CalcProfit()
+
+	// 2. get fp out, replenish fp
 	totalout, err := fp.GetTotalOut()
 	if err != nil {
-		return err
+		log.Warn("SettleAccounts get fund pool out failed", "error", err)
 	}
 	if totalout != nil {
-		for i := 0; i < 3; i++ {
-			log.Debug("Replenish fund pool", "try time", i, "amount", totalout)
-			_, err := mp.SendFSN(fp.Address, totalout)
-			if err == nil {
-				break
-			} else {
-				log.Debug("Replenish fund pool failed", "try time", i, "error", err)
+			_, err := mp.SendAsset(fp.Address, totalout)
+			if err != nil {
+				log.Warn("Replenish fund pool reported error", "error", err)
 			}
-		}
 	}
 
-	// 2. update lastSettlePoint
+	// 3. update lastSettlePoint
 	h := GetHead()
 	SetLastSettlePoint(h)
 
-	// 3. calc userProfits
+	// 4. calc and pay userProfits
 	// if withdraw, then no profit of the withdrawn part will be given in this day.
 	totalProfit := mp.Profit
+	if totalProfit.Cmp(big.NewInt(0)) <= 0 {
+		log.Info("no total profit in mining pool in last settlement peroid")
+		return nil
+	}
 	uam := GetAllAssets()
 	userProfits := CalculateUserProfits(totalProfit, uam)
 
-	_, detained := fp.PayProfits(userProfits)
+	hs, detained := fp.PayProfits(userProfits)
+	log.Debug(fmt.Sprintf("fund pool has commited %v transactions", len(hs)), "hashes", hs)
 	for _, dp := range detained {
 		err := AddDetainedProfit(dp)
 		if err != nil {
@@ -147,7 +168,8 @@ func SettleAccounts() error {
 			continue
 		}
 	}
-	return nil
+
+	return err
 }
 
 func CalculateUserProfits(totalProfit *big.Int, uam *UserAssetMap) []Profit {
@@ -189,7 +211,7 @@ func GetTxType(tx ethapi.TxAndReceipt) (txtype string) {
 			txtype = ""
 		}
 	}()
-	mp := GetMinerPool()
+	mp := GetMiningPool()
 	if tx.Receipt["fsnLogTopic"] == "TimeLockFunc" {
 		if tx.Receipt["status"].(int) != 1 {
 			return ""
@@ -292,11 +314,4 @@ func Run() {
 			}
 		}
 	}
-}
-
-func NewZeroTimer() *time.Timer {
-	now := time.Now().Round(time.Hour * 24)
-	next := now.Add(time.Hour * 24)
-	timer := time.NewTimer(next.Sub(now))
-	return timer
 }
