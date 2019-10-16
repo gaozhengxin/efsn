@@ -45,8 +45,8 @@ var (
 )
 
 var (
-	dbname string = "fusion"
-	//dbname string = "fusion2"
+	//dbname string = "fusion"
+	dbname string = "fusion2"
 
 	tbBlocks          string = "Blocks"
 	tbTransactions    string = "Transactions"
@@ -155,6 +155,28 @@ type mgoTx struct {
 	Receipt      mgoReceipt `bson:"receipt"`
 	ReceiptFound bool       `bson:"receiptFound"`
 	Tx           mgoTxEth   `bson:"tx"`
+
+	// compatible with mgoTransaction
+	HashLen          int      `bson:"hashLen"`
+	Nonce            uint64   `bson:"nonce"`
+	BlockHash        string   `bson:"blockHash"`
+	BlockNumber      uint64   `bson:"blockNumber"`
+	TransactionIndex uint64   `bson:"transactionIndex"`
+	From             string   `bson:"from"`
+	To               string   `bson:"to"`
+	Value            float64  `bson:"value"`
+	GasLimit         uint64   `bson:"gasLimit"`
+	GasPrice         string   `bson:"gasPrice"`
+	GasUsed          uint64   `bson:"gasUsed"`
+	Timestamp        uint64   `bson:"timestamp"`
+	//Input            string   `bson:"input"` duplicated
+	//Status		int `bson:"status"`
+	IsERC20       int     `bson:"isERC20"`
+	TxType        int     `bson:"type"`
+	CoinType      string  `bson:"coinType"`
+	ContractFrom  string  `bson:"contractFrom"`
+	ContractTo    string  `bson:"contractTo"`
+	ContractValue float64 `bson:"contractValue"`
 }
 
 type mgoTxInput struct {

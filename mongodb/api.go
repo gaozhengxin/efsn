@@ -68,6 +68,21 @@ func mongoServerInit() {
 	InitOnce = false
 }
 
+func AddBlock1(mb interface{}) {
+	collectionTable := database.C("Blocks")
+	if collectionTable == nil {
+		log.Warn("getCollection()", "collectionTable", "nil")
+		return
+	}
+	err := collectionTable.Insert(mb)
+	if err == nil {
+		log.Debug("==== AddBlock() ====", "Insert success: mgoBlock number", mb)
+	} else {
+		log.Debug("==== AddBlock() ====", "Insert failed: mgoBlock number", mb, "error", err)
+	}
+}
+
+
 func getCollection(table string) *mgo.Collection {
 	if InitOnce {
 		return nil

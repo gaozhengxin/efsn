@@ -2,7 +2,7 @@ package sync
 
 import (
 	"bytes"
-	//"encoding/hex"
+	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"log"
@@ -15,11 +15,13 @@ import (
 	"github.com/fatih/color"
 	"github.com/FusionFoundation/efsn/common"
 	"github.com/FusionFoundation/efsn/common/hexutil"
+	"github.com/FusionFoundation/efsn/consensus/datong"
 	"github.com/FusionFoundation/efsn/core/types"
 	cnsl "github.com/FusionFoundation/efsn/console"
 	"github.com/FusionFoundation/efsn/internal/ethapi"
 	glog "github.com/FusionFoundation/efsn/log"
 	"github.com/FusionFoundation/efsn/mongodb"
+	"github.com/FusionFoundation/efsn/rlp"
 	"github.com/FusionFoundation/efsn/rpc"
 )
 
@@ -116,7 +118,7 @@ func Sync() {
 			total = height
 			for head < height {
 				/*
-				block, e := getBlock(head + 1)
+				block, _, e := getBlock(head + 1)
 				if e != nil {
 					glog.Warn("get block error", "block number", head, "error", e)
 					head++
@@ -152,7 +154,7 @@ func Sync() {
 				for i := head; i < head + n; i++ {
 					wg.Add(1)
 					go func(head uint64, h *uint64) {
-						block, e := getBlock(head + 1)
+						block, mb, e := getBlock(head + 1)
 						if e != nil {
 							glog.Warn("get block error", "block number", head, "error", e)
 							return
@@ -171,14 +173,19 @@ func Sync() {
 							if len(mongodb.GetTxBuf().Txs) >= 1000 {
 								mongodb.TxBufPush()
 							}
+
+							CalculateReward(mb, txs)
+
+							mongodb.AddBlock1(mb)
 						}
 
-						glog.Debug("sync", "block number", head, "transactions", fmt.Sprintf("%+v", txs))
 						*h++
+
+						glog.Debug("sync", "block number", head, "transactions", fmt.Sprintf("%+v", txs))
 						wg.Done()
 					}(i, &h)
-					wg.Wait()
 				}
+				wg.Wait()
 				head = head + n
 				mongodb.TxBufPush()
 			}
@@ -356,9 +363,9 @@ func getBlockTransactionCount(number uint64) (int, error) {
 	return strconv.Atoi(ret)
 }
 
-func getBlock(number uint64) (*types.Block, error) {
+func getBlock(number uint64) (_ *types.Block, _ *mgoBlock, err error) {
 	if console == nil {
-		return nil, NilConsoleErr
+		return nil, nil, NilConsoleErr
 	}
 	rw.Lock()
 	defer rw.Unlock()
@@ -375,7 +382,22 @@ func getBlock(number uint64) (*types.Block, error) {
 	ret = strings.TrimRightFunc(ret, trimR)
 	ret = strings.Replace(ret, "\\", "", -1)
 
-	return UnmarshalRPCBlock(ret)
+	rpcblk := new(RPCBlock)
+	err = json.Unmarshal([]byte(ret), rpcblk)
+	if err != nil {
+		err = UnmarshalRPCBlockErr(err.Error() + "    " + ret)
+		return nil, nil, err
+	}
+
+	blk1, e1 := rpcblk.ToBlock()
+	if e1 != nil {
+		return nil, nil, e1
+	}
+	blk2, e2 := rpcblk.ToMgoBlock()
+	if e2 != nil {
+		return nil, nil, e2
+	}
+	return blk1, blk2, nil
 }
 
 func getTransactionFromBlock(block uint64, number int) (*types.Transaction, error) {
@@ -419,6 +441,42 @@ func getTransaction(hash string) (*types.Transaction, error) {
 	ret = strings.TrimRightFunc(ret, trimR)
 	ret = strings.Replace(ret, "\\", "", -1)
 	return UnmarshalTx(ret)
+}
+
+func CalculateReward(mb *mgoBlock, txs []*ethapi.TxAndReceipt) {
+	defer func() {
+		if r := recover(); r != nil {
+			glog.Warn("CalculateReward() failed", "error", r)
+		}
+	}()
+	// block creation reward
+	reward := datong.CalcRewards(new(big.Int).SetUint64(mb.Number))
+	gasUses := make(map[common.Hash]*big.Int)
+	for _, tx := range txs {
+		gasUsed, _ := new(big.Int).SetString(tx.Receipt["gasUsed"].(string), 0)
+		gasUses[tx.Tx.Hash] = gasUsed
+	}
+	for _, tx := range txs {
+		if gasUsed, ok := gasUses[tx.Tx.Hash]; ok {
+			gasReward := new(big.Int).Mul(tx.Tx.GasPrice.ToInt(), gasUsed)
+			if gasReward.Sign() > 0 {
+				// transaction gas reward
+				reward.Add(reward, gasReward)
+			}
+		}
+		if common.IsFsnCall(tx.Tx.To) {
+			fsnCallParam := &common.FSNCallParam{}
+			data, _ := hex.DecodeString(tx.Receipt["logs"].([]interface{})[0].(map[string]interface{})["data"].(string))
+			rlp.DecodeBytes(data, fsnCallParam)
+			feeReward := common.GetFsnCallFee(tx.Tx.To, fsnCallParam.Func)
+			if feeReward.Sign() > 0 {
+				// transaction fee reward
+				reward.Add(reward, feeReward)
+			}
+		}
+	}
+
+	mb.Reward = reward.String()
 }
 
 func UnmarshalTx(input string) (tx *types.Transaction, err error) {
@@ -472,19 +530,12 @@ func UnmarshalTx(input string) (tx *types.Transaction, err error) {
 	return tx, nil
 }
 
-func UnmarshalRPCBlock(input string) (blk *types.Block, err error) {
+func (rpcblk *RPCBlock) ToBlock () (blk *types.Block, err error) {
 	defer func() {
 		if r := recover(); r != nil {
 			err = UnmarshalRPCBlockErr(fmt.Sprintf("%+v", r))
 		}
 	}()
-
-	rpcblk := new(RPCBlock)
-	err = json.Unmarshal([]byte(input), rpcblk)
-	if err != nil {
-		err = UnmarshalRPCBlockErr(err.Error() + "    " + input)
-		return nil, err
-	}
 
 	header := &types.Header{
 		Number: big.NewInt(rpcblk.Number),
@@ -527,6 +578,41 @@ func UnmarshalRPCBlock(input string) (blk *types.Block, err error) {
 	return
 }
 
+func (rpcblk *RPCBlock) ToMgoBlock () (blk *mgoBlock, err error) {
+	defer func() {
+		if r := recover(); r != nil {
+			err = UnmarshalRPCBlockErr(fmt.Sprintf("%+v", r))
+		}
+	}()
+
+	mb := new(mgoBlock)
+	mb.Key = rpcblk.Hash.Hex()
+	mb.Number = uint64(rpcblk.Number)
+	mb.Hash = rpcblk.Hash.Hex()
+	mb.ParentHash = rpcblk.ParentHash.Hex()
+	mb.Nonce = rpcblk.Nonce
+	mb.Sha3Uncles = rpcblk.Sha3Uncles.Hex()
+	mb.LogsBloom = string(rpcblk.LogsBloom[:])
+	mb.TransactionsRoot = rpcblk.StateRoot.Hex()
+	mb.StateRoot = rpcblk.StateRoot.Hex()
+	mb.Miner = rpcblk.Miner.Hex()
+	mb.Difficulty, _ = strconv.ParseUint(rpcblk.Difficulty, 10, 64)
+	//mb.TotalDifficulty
+	mb.Size = float64(rpcblk.Size)
+	mb.ExtraData = string(*rpcblk.ExtraData)
+	mb.GasLimit = rpcblk.GasLimit
+	mb.GasUsed = rpcblk.GasUsed
+	mb.Timestamp = uint64(rpcblk.Timestamp)
+	//mb.Uncles
+	mb.Txns = len(rpcblk.Transactions)
+
+	//mb.AvgGasprice
+	//mb.Reward = rpcblk.
+	mb.ReceiptHash = rpcblk.ReceiptsRoot.Hex()
+	//mb.BlockTime
+	return mb, nil
+}
+
 type RPCBlock struct {
 	Number            int64
 	Hash              common.Hash
@@ -547,4 +633,31 @@ type RPCBlock struct {
 	ReceiptsRoot      common.Hash
 	Transactions      []common.Hash
 	Uncles            []common.Hash
+}
+
+type mgoBlock struct {
+	Key              string          `bson:"_id"`
+	Number           uint64          `bson:"number"`
+	Hash             string          `bson:"hash"`
+	ParentHash       string          `bson:"parentHash"`
+	Nonce            string          `bson:"nonce"`
+	Sha3Uncles       string          `bson:"sha3Uncles"`
+	LogsBloom        string          `bson:"logsBloom"`
+	TransactionsRoot string          `bson:"transactionsRoot"`
+	StateRoot        string          `bson:"stateRoot"`
+	Miner            string          `bson:"miner"`
+	Difficulty       uint64          `bson:"difficulty"`
+	TotalDifficulty  uint64          `bson:"totalDifficulty"`
+	Size             float64         `bson:"size"`
+	ExtraData        string          `bson:"extraData"`
+	GasLimit         uint64          `bson:"gasLimit"`
+	GasUsed          uint64          `bson:"gasUsed"`
+	Timestamp        uint64          `bson:"timestamp"`
+	Uncles           []*types.Header `bson:"uncles"`
+	Txns             int             `bson:"txns"`
+	AvgGasprice      string          `bson:"avgGasprice"`
+	Reward           string          `bson:"reward"`
+
+	ReceiptHash string `bson:"receiptHash"`
+	BlockTime   uint64 `bson:"blockTime"`
 }

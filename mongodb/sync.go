@@ -1134,6 +1134,27 @@ func ParseTx(tx *ethapi.TxAndReceipt) (mtx *mgoTx, err error) {
 		Gas: uint64(tx.Tx.Gas),
 		GasPrice: tx.Tx.GasPrice.String(),
 	}
+
+	// compatible with mgoTransaction
+	mtx.HashLen = 0
+	mtx.Nonce = uint64(tx.Tx.Nonce)
+	mtx.BlockHash = mtx.Tx.BlockHash
+	mtx.BlockNumber = mtx.Tx.BlockNumber
+	mtx.TransactionIndex = uint64(tx.Tx.TransactionIndex)
+	mtx.From = mtx.Tx.From
+	mtx.To = mtx.Tx.To
+	mtx.Value = float64(mtx.Tx.Value)
+	mtx.GasLimit = uint64(tx.Tx.Gas)
+	mtx.GasPrice = mtx.Tx.GasPrice
+	mtx.GasUsed = mtx.Receipt.GasUsed
+	//mtx.Timestamp
+	//mtx.Status
+	/*mtx.IsERC20
+	mtx.TxType
+	mtx.CoinType
+	mtx.ContractFrom
+	mtx.ContractTo
+	mtx.ContractValue*/
 	return
 }
 
