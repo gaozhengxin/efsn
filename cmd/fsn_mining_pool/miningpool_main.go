@@ -12,7 +12,6 @@ import (
 )
 
 func init() {
-	//log.Root().SetHandler(log.LvlFilterHandler(log.LvlInfo, log.StreamHandler(os.Stderr, log.TerminalFormat(true))))
 	log.Root().SetHandler(log.LvlFilterHandler(log.LvlDebug, log.StreamHandler(os.Stderr, log.TerminalFormat(true))))
 }
 
@@ -77,7 +76,7 @@ func DoDeposit(tx ethapi.TxAndReceipt) error {
 	return nil
 }
 
-func DoWithdraw(m WithdrawMsg) error {
+func DoWithdraw(m WithdrawMsg) {
 	ast := GetUserAsset(m.Address)
 	if ast != nil {
 		ast = ast.Sub(m.Asset)
@@ -89,21 +88,50 @@ func DoWithdraw(m WithdrawMsg) error {
 	ast.Align(uint64(today))
 	if !ast.IsNonneg() {
 		log.Warn("DoWithdraw fail, account: %v has no enough asset", m.Address)
-		return nil
+		ret := &WithdrawRet{
+			Id: m.Id,
+			Error: fmt.Errorf("%v has no enough asset", m.Address),
+		}
+		WithdrawRetCh <- *ret
+		return
 	}
 	err := SetUserAsset(m.Address, *ast)
 	if err != nil {
 		log.Warn("DoWithdraw failed", "error", err)
-		return err
+		ret := &WithdrawRet{
+			Id: m.Id,
+			Error: err,
+		}
+		WithdrawRetCh <- *ret
+		return
 	}
-	return nil
+	log.Info("DoWithdraw send asset to user")
+	fp := GetFundPool()
+	hs, err := fp.SendAsset(m.Address, ast)
+	if err != nil {
+		log.Warn("DoWithdraw send asset failed", "error", err)
+	}
+	ret := &WithdrawRet{
+		Hs: hs,
+		Id: m.Id,
+	}
+	WithdrawRetCh <- *ret
+	return
 }
 
 var WithdrawCh chan(WithdrawMsg) = make(chan WithdrawMsg)
+var WithdrawRetCh = make(chan WithdrawRet)
 
 type WithdrawMsg struct {
 	Address common.Address
 	Asset *Asset
+	Id int
+}
+
+type WithdrawRet struct {
+	Hs []common.Hash `json:"hashes,omitempty"`
+	Id int `json:"id"`
+	Error error `json:"error,omitempty"`
 }
 
 // SettleAccounts runs every day 0:00
@@ -296,18 +324,7 @@ func Run() {
 			// do withdraw
 			fmt.Println("receive withdraw message")
 			log.Info("receive withdraw message")
-			ch := make(chan string)
-			go func(ch chan string) {
-				err := DoWithdraw(m)
-				if err != nil {
-					ch <- err.Error()
-				} else {
-					ch <- "ok"
-				}
-			}(ch)
-			if ret := <-ch; ret != "ok" {
-				panic(fmt.Errorf("withdraw error: %v", ret))
-			}
+			DoWithdraw(m)
 		case <-timer.C:
 			// do everyday at 00:00
 			log.Info("start settle accounts")
