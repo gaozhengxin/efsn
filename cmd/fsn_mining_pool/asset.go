@@ -96,6 +96,10 @@ func (a *Asset) Reduce() {
 		if (*a)[i-1].V.Cmp((*a)[i].V) == 0 {
 			continue
 		}
+		if (*a)[i-1].T == (*a)[i].T {
+			(*c)[len(*c) - 1].V = new(big.Int).Add((*c)[len(*c) - 1].V, (*a)[i].V)
+			continue
+		}
 		*c = append(*c, (*a)[i])
 	}
 	*a = *c
@@ -173,12 +177,25 @@ func (a *Asset) IsNonneg() bool {
 	return true
 }
 
-func (a *Asset) GetAmountByTime(t uint64) *big.Int {
-	if (*a)[0].T > t {
-		return nil
+func Inv(a *Asset) (*Asset) {
+	b := make([]Point, len(*a))
+	for i := 0; i < len(*a); i++ {
+		b[i] = Point{
+			T:(*a)[i].T,
+			V:new(big.Int).Neg((*a)[i].V),
+		}
 	}
-	var v *big.Int
-	for i := 1; i < len(*a); i++ {
+	inv := Asset(b)
+	return &inv
+}
+
+func (a *Asset) Sub(b *Asset) (*Asset) {
+	return a.Add(Inv(b))
+}
+
+func (a *Asset) GetAmountByTime(t uint64) *big.Int {
+	v := big.NewInt(0)
+	for i := 0; i < len(*a); i++ {
 		if (*a)[i].T > t {
 			return v
 		}
