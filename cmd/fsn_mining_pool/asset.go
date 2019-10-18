@@ -122,7 +122,7 @@ func (a *Asset) ReduceDiff() {
 
 func (a *Asset) Diff() (*Asset) {
 	d := new(Asset)
-	if len(*a) <= 1 {
+	if len(*a) < 1 {
 		return nil
 	} else {
 		(*d) = append([]Point{}, (*a)[0])
@@ -178,15 +178,15 @@ func (a *Asset) IsNonneg() bool {
 }
 
 func Inv(a *Asset) (*Asset) {
-	b := make([]Point, len(*a))
+	b := new(Asset)
 	for i := 0; i < len(*a); i++ {
-		b[i] = Point{
+		p := Point{
 			T:(*a)[i].T,
 			V:new(big.Int).Neg((*a)[i].V),
 		}
+		(*b) = append(*b, p)
 	}
-	inv := Asset(b)
-	return &inv
+	return b
 }
 
 func (a *Asset) Sub(b *Asset) (*Asset) {
