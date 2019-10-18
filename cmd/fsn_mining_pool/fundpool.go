@@ -38,14 +38,14 @@ func SetFundPoolAccount(key manager) {
 }
 */
 
-func (fp *FundPool) GetTotalOut() (total *Asset, err error) {
+func (fp *FundPool) GetTotalOut(after, before uint64) (total *Asset, err error) {
+	log.Debug("fund pool GetTotalOut")
 	defer func() {
 		if r := recover(); r != nil {
 			err = fmt.Errorf("GetTotalOut() failed, error: %v", r)
 		}
 	}()
-	after := GetLastSettlePoint()
-	txs := GetTxFromAddress(fp.Address, after)
+	txs := GetTxFromAddress(fp.Address, after, before)
 	if len(txs) > 0 {
 		for _, tx := range txs {
 			if tx.Receipt["fsnLogTopic"] == "SendAssetFunc" && tx.Receipt["AssetID"] == "0xffffffffffffffffffffffffffffffffffffffff" {
@@ -67,8 +67,6 @@ func (fp *FundPool) GetTotalOut() (total *Asset, err error) {
 
 func (fp *FundPool) PayProfits(profits []Profit) ([]common.Hash, []Profit) {
 	log.Debug("fund pool PayProfits()", "profits", profits)
-	fpLock.Lock()
-	defer fpLock.Unlock()
 	var hs []common.Hash
 	var detained []Profit
 	for _, p := range profits {
