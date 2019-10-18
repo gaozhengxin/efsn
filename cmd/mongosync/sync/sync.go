@@ -46,6 +46,8 @@ var IpcDataDir string
 
 var IpcDocRoot string
 
+var Offset uint64 = 15
+
 // 选择需要写入数据库的交易
 var txFilter func(txrcp *ethapi.TxAndReceipt) bool = func(txrcp *ethapi.TxAndReceipt) bool {
 	return true
@@ -85,6 +87,11 @@ func Sync() {
 			case <-ticker.C:
 				height, e := blockNumber()
 				if e == nil {
+					if height > Offset {
+						height = height - Offset
+					} else {
+						height = 1
+					}
 					ch <- height
 				} else {
 					log.Print(e.Error())
