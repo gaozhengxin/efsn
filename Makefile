@@ -30,7 +30,10 @@ mongosync:
 	build/env.sh go run build/ci.go install ./cmd/mongosync
 
 miningpool:
-	build/env.sh go run build/ci.go install ./cmd/fsn_mining_pool/miningpool_main.go ./cmd/fsn_mining_pool/minerpool.go ./cmd/fsn_mining_pool/fundpool.go ./cmd/fsn_mining_pool/asset.go ./cmd/fsn_mining_pool/mongo.go ./cmd/fsn_mining_pool/utils.go ./cmd/fsn_mining_pool/withdraw.go
+	build/env.sh go run build/ci.go install ./cmd/fsn_mining_pool/miningpool_main.go ./cmd/fsn_mining_pool/minerpool.go ./cmd/fsn_mining_pool/fundpool.go ./cmd/fsn_mining_pool/asset.go ./cmd/fsn_mining_pool/mongo.go ./cmd/fsn_mining_pool/utils.go ./cmd/fsn_mining_pool/withdraw.go ./cmd/fsn_mining_pool/server.go
+
+callwithdraw:
+	build/env.sh go run build/ci.go install ./cmd/callwithdraw/withdraw.go
 
 swarm:
 	build/env.sh go run build/ci.go install ./cmd/swarm
