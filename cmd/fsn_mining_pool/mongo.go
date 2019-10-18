@@ -6,6 +6,7 @@ import (
 	"strings"
 	"sync"
 	"time"
+	"github.com/FusionFoundation/efsn/cmd/fsn_mining_pool/withdraw"
 	"github.com/FusionFoundation/efsn/common"
 	"github.com/FusionFoundation/efsn/common/hexutil"
 	"github.com/FusionFoundation/efsn/internal/ethapi"
@@ -333,6 +334,14 @@ func GetUserAsset(usr common.Address) *Asset {
 	ast.Reduce()
 
 	return ast
+}
+
+func AddWithdrawLog(req withdraw.WithdrawRequest) error {
+	log.Debug("mongo AddWithdrawLog()")
+	collectionTable := database.C("WithdrawLogs")
+	d := bson.M{"withdrawrequest":req}
+	err := collectionTable.Insert(d)
+	return err
 }
 
 func AddDetainedProfit(p Profit) error {
