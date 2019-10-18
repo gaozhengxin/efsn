@@ -14,10 +14,16 @@ import (
 )
 
 func NewZeroTimer() *time.Timer {
-	today := time.Now().Add(-1 * time.Hour * 12).Round(time.Hour * 24)
+	today := GetTodayZero()
 	next := today.Add(time.Hour * 24)
+	fmt.Printf("\nzero timer: next zero is %v\n\n", next)
 	timer := time.NewTimer(next.Sub(time.Now()))
+	//timer := time.NewTimer(time.Second * 20) //测试
 	return timer
+}
+
+func GetTodayZero() time.Time {
+	return time.Now().Add(-1 * time.Hour * 12).Round(time.Hour * 24)
 }
 
 func GetRPCClient() *ethclient.Client {
