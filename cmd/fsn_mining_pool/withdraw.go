@@ -1,108 +1,35 @@
 package main
 
 import (
-	"crypto/ecdsa"
-	"encoding/hex"
-	"encoding/json"
 	"fmt"
 	"math/big"
-	"time"
+	"github.com/FusionFoundation/efsn/cmd/fsn_mining_pool/withdraw"
 	"github.com/FusionFoundation/efsn/common"
-	"github.com/FusionFoundation/efsn/crypto"
+	"github.com/FusionFoundation/efsn/log"
 )
 
-type WithdrawRequest struct {
-	Hash    string `json:"hash,omitempty"`
-	Address string `json:"address"`
-	Amount  string `json:"amount"`
-	//Timestamp uint64 `json:"timestamp"` ???
-	Sig     string `json:"sig,omitempty"`
-}
-
-func (r *WithdrawRequest) hash() common.Hash {
-	cr := &WithdrawRequest{
-		Address: r.Address,
-		Amount: r.Amount,
-	}
-	b, err := json.Marshal(cr)
-	if err != nil {
-		return common.Hash{}
-	}
-	h := crypto.Keccak256Hash(b)
-	return h
-}
-
-func SignWithdrawRequest (r *WithdrawRequest, priv *ecdsa.PrivateKey) error {
-	// 1. check address
-	signerAddr := crypto.PubkeyToAddress(priv.PublicKey)
-	if signerAddr != common.HexToAddress(r.Address) {
-		return fmt.Errorf("signer address not match")
-	}
-	// 2. hash
-	h := r.hash()
-	r.Hash = h.Hex()
-	// 3. sign
-	sig, err := crypto.Sign(h.Bytes(), priv)
-	if err != nil {
-		return err
-	}
-	r.Sig = hex.EncodeToString(sig)
-	return nil
-}
-
-func (req *WithdrawRequest) VerifySignature() bool {
-	sig, err := hex.DecodeString(req.Sig)
-	if err != nil {
-		return false
-	}
-	hash := common.HexToHash(req.Hash)
-	// 1. recover pubkey
-	pub, err := crypto.SigToPub(hash.Bytes(), sig)
-	if err != nil {
-		return false
-	}
-	// 2. verify v
-	r := new(big.Int).SetBytes(sig[:32])
-	s := new(big.Int).SetBytes(sig[32:64])
-	v := new(big.Int).SetBytes([]byte{sig[64] + 27})
-	vb := byte(v.Uint64() - 27)
-	if !crypto.ValidateSignatureValues(vb, r, s, false) {
-		return false
-	}
-	// 3. verify r,s
-	cpub := crypto.CompressPubkey(pub)
-	rs := sig[:64]
-	if !crypto.VerifySignature(cpub, hash.Bytes(), rs) {
-		return false
-	}
-	// 4. verify address
-	recaddr := crypto.PubkeyToAddress(*pub)
-	if recaddr != common.HexToAddress(req.Address) {
-		return false
-	}
-	return true
-}
-
-func ValidateWithdraw(r *WithdrawRequest) error {
-	AssetsLock.Lock()
-	defer AssetsLock.Unlock()
-	if common.HexToHash(r.Hash) != r.hash() {
+func ValidateWithdraw(r *withdraw.WithdrawRequest) error {
+	log.Info("start ValidateWithdraw()", "request", r)
+	if common.HexToHash(r.Hash) != r.MakeHash() {
 		return fmt.Errorf("withdraw request hash error")
 	}
 	if r.VerifySignature() {
+		log.Debug("signature verify passed")
 		user := common.HexToAddress(r.Address)
-		// 判断user存在
 		amount, ok := new(big.Int).SetString(r.Amount, 10)
-		if !ok {
+		if !ok || amount.Cmp(big.NewInt(0)) <1 {
 			return fmt.Errorf("withdraw amount error")
 		}
-		// 判断 ok & amount > 0
 		// 获取余额
 		userasset := GetUserAsset(user)
+		if userasset == nil {
+			return fmt.Errorf("user not found")
+		}
 		// 选最长的一段
-		today := time.Now().Add(-1 * time.Hour * 12).Round(time.Hour * 24).Unix()
+		today := GetTodayZero().Unix()
 		sendasset, _ := NewAsset(amount, uint64(today), 0)
-		rem := sendasset.Sub(userasset)
+		rem := userasset.Sub(sendasset)
+		log.Debug("ValidateWithdraw()", "rem", rem)
 		starttime := (*rem)[0].T
 		endtime := starttime
 		for i := 0; i < len(*rem); i++ {
@@ -113,16 +40,20 @@ func ValidateWithdraw(r *WithdrawRequest) error {
 				break
 			}
 		}
+		log.Debug("ValidateWithdraw()", "starttime", starttime, "endtime", endtime)
 		if starttime == endtime {
 			return fmt.Errorf("no enough balance")
 		}
 		// 构造Asset
 		sendasset, _ = NewAsset(amount, starttime, endtime)
+		log.Debug("ValidateWithdraw() asset prepared", "asset", sendasset)
 		// 构造WithdrawMsg
 		msg := WithdrawMsg{
 			Address:user,
 			Asset:sendasset,
 		}
+		// AddWithdrawLog
+		AddWithdrawLog(*r)
 		// 传入WithdrawCh
 		WithdrawCh <- msg
 	} else {
