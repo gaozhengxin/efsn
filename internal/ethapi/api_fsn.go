@@ -299,17 +299,7 @@ func (s *PublicFusionAPI) GetTransactionAndReceipt(ctx context.Context, hash com
 	}
 	from, _ := types.Sender(signer, tx)
 
-<<<<<<< HEAD
-	var (
-		fsnLogTopic string
-		fsnLogData  interface{}
-		fsnTxInput  interface{}
-	)
-
-	if common.IsFsnCall(tx.To()) && len(receipt.Logs) > 0 && len(receipt.Logs[0].Topics) > 0 {
-=======
 	if isFsnCall && len(receipt.Logs) > 0 && len(receipt.Logs[0].Topics) > 0 {
->>>>>>> 318b842b099ebd0d8658a62d468336d4260c5361
 		log := receipt.Logs[0]
 		topic := log.Topics[0]
 		fsnCallFunc := common.FSNCallFunc(topic[common.HashLength-1])
@@ -317,12 +307,6 @@ func (s *PublicFusionAPI) GetTransactionAndReceipt(ctx context.Context, hash com
 		if decodedLog, err := datong.DecodeLogData(log.Data); err == nil {
 			fsnLogData = decodedLog
 		}
-<<<<<<< HEAD
-		if decoded, err := datong.DecodeTxInput(orgTx.Input); err == nil {
-			fsnTxInput = decoded
-		}
-=======
->>>>>>> 318b842b099ebd0d8658a62d468336d4260c5361
 	}
 
 	fields := map[string]interface{}{
