@@ -16,7 +16,7 @@ func main() {
 	}
 	req.MakeHash()
 	fmt.Printf("req:\n%+v\n", req)
-	priv, _ := crypto.HexToECDSA("40d6e64ce085269869b178c23a786e499ff2d6a5334fe45964211d25bea973bf")
+	priv, _ := crypto.HexToECDSA("")
 	err := w.SignWithdrawRequest(req, priv)
 	if err != nil {
 		panic(err)
