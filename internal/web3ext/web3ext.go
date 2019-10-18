@@ -531,6 +531,16 @@ web3._extend({
 			name: 'getHashrate',
 			call: 'miner_getHashrate'
 		}),
+		new web3._extend.Method({
+			name: 'startAutoBuyTicket',
+			call: 'miner_startAutoBuyTicket',
+			params: 0
+		}),
+		new web3._extend.Method({
+			name: 'stopAutoBuyTicket',
+			call: 'miner_stopAutoBuyTicket',
+			params: 0
+		}),
 	],
 	properties: []
 });
@@ -694,6 +704,11 @@ web3._extend({
 			name: 'getSnapshotAtHash',
 			call: 'fsn_getSnapshotAtHash',
 			params: 1
+		}),
+		new web3._extend.Method({
+			name: 'getBlockReward',
+			call: 'fsn_getBlockReward',
+			params: 1,
 		}),
 		new web3._extend.Method({
 			name: 'getBalance',
@@ -1068,6 +1083,11 @@ web3._extend({
 				web3._extend.formatters.inputDefaultBlockNumberFormatter
 			]
 		}),
+		new web3._extend.Method({
+			name: 'isAutoBuyTicket',
+			call: 'fsn_isAutoBuyTicket',
+			params: 0
+		}),
 	],
 	properties:[
 		new web3._extend.Property({
@@ -1207,16 +1227,6 @@ web3._extend({
 		new web3._extend.Method({
 			name: 'isAutoBuyTicket',
 			call: 'fsn_isAutoBuyTicket',
-			params: 0
-		}),
-		new web3._extend.Method({
-			name: 'startAutoBuyTicket',
-			call: 'fsntx_startAutoBuyTicket',
-			params: 0
-		}),
-		new web3._extend.Method({
-			name: 'stopAutoBuyTicket',
-			call: 'fsntx_stopAutoBuyTicket',
 			params: 0
 		}),
 		]

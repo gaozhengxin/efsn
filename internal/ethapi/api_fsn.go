@@ -254,37 +254,42 @@ type TxAndReceipt struct {
 func (s *PublicFusionAPI) GetTransactionAndReceipt(ctx context.Context, hash common.Hash) (TxAndReceipt, error) {
 	// Try to return an already finalized transaction
 	var orgTx *RPCTransaction
-	if tx, blockHash, blockNumber, index := rawdb.ReadTransaction(s.b.ChainDb(), hash); tx != nil {
+	tx, blockHash, blockNumber, index := rawdb.ReadTransaction(s.b.ChainDb(), hash)
+	if tx != nil {
 		orgTx = newRPCTransaction(tx, blockHash, blockNumber, index)
-	} else if tx := s.b.GetPoolTransaction(hash); tx != nil {
+	} else if poolTx := s.b.GetPoolTransaction(hash); poolTx != nil {
 		// No finalized transaction, try to retrieve it from the pool
-		orgTx = newRPCPendingTransaction(tx)
+		orgTx = newRPCPendingTransaction(poolTx)
 	} else {
 		return TxAndReceipt{}, fmt.Errorf("Tx not found")
 	}
 
-	tx, blockHash, blockNumber, index := rawdb.ReadTransaction(s.b.ChainDb(), hash)
+	var (
+		isFsnCall   = common.IsFsnCall(orgTx.To)
+		fsnLogTopic string
+		fsnLogData  interface{}
+		fsnTxInput  interface{}
+	)
+
+	if isFsnCall {
+		if decoded, err := datong.DecodeTxInput(orgTx.Input); err == nil {
+			fsnTxInput = decoded
+		}
+	}
+
+	txWithoutReceipt := TxAndReceipt{
+		Tx:           orgTx,
+		Receipt:      nil,
+		ReceiptFound: false,
+		FsnTxInput:   fsnTxInput,
+	}
+
 	if tx == nil {
-		return TxAndReceipt{
-			Tx:           orgTx,
-			Receipt:      nil,
-			ReceiptFound: false,
-		}, nil
+		return txWithoutReceipt, nil
 	}
 	receipts, err := s.b.GetReceipts(ctx, blockHash)
-	if err != nil {
-		return TxAndReceipt{
-			Tx:           orgTx,
-			Receipt:      nil,
-			ReceiptFound: false,
-		}, nil
-	}
-	if len(receipts) <= int(index) {
-		return TxAndReceipt{
-			Tx:           orgTx,
-			Receipt:      nil,
-			ReceiptFound: false,
-		}, nil
+	if err != nil || len(receipts) <= int(index) {
+		return txWithoutReceipt, nil
 	}
 	receipt := receipts[index]
 
@@ -294,6 +299,7 @@ func (s *PublicFusionAPI) GetTransactionAndReceipt(ctx context.Context, hash com
 	}
 	from, _ := types.Sender(signer, tx)
 
+<<<<<<< HEAD
 	var (
 		fsnLogTopic string
 		fsnLogData  interface{}
@@ -301,6 +307,9 @@ func (s *PublicFusionAPI) GetTransactionAndReceipt(ctx context.Context, hash com
 	)
 
 	if common.IsFsnCall(tx.To()) && len(receipt.Logs) > 0 && len(receipt.Logs[0].Topics) > 0 {
+=======
+	if isFsnCall && len(receipt.Logs) > 0 && len(receipt.Logs[0].Topics) > 0 {
+>>>>>>> 318b842b099ebd0d8658a62d468336d4260c5361
 		log := receipt.Logs[0]
 		topic := log.Topics[0]
 		fsnCallFunc := common.FSNCallFunc(topic[common.HashLength-1])
@@ -308,9 +317,12 @@ func (s *PublicFusionAPI) GetTransactionAndReceipt(ctx context.Context, hash com
 		if decodedLog, err := datong.DecodeLogData(log.Data); err == nil {
 			fsnLogData = decodedLog
 		}
+<<<<<<< HEAD
 		if decoded, err := datong.DecodeTxInput(orgTx.Input); err == nil {
 			fsnTxInput = decoded
 		}
+=======
+>>>>>>> 318b842b099ebd0d8658a62d468336d4260c5361
 	}
 
 	fields := map[string]interface{}{
@@ -514,6 +526,43 @@ func (s *PublicFusionAPI) GetStakeInfo(ctx context.Context, blockNr rpc.BlockNum
 	}
 	sort.Stable(stakeInfo.StakeInfo)
 	return stakeInfo, nil
+}
+
+// GetBlockAndReward wacom
+func (s *PublicFusionAPI) GetBlockReward(ctx context.Context, blockNr rpc.BlockNumber) (string, error) {
+	block, err := s.b.BlockByNumber(ctx, blockNr)
+	if err != nil {
+		return "", err
+	}
+	receipts, err := s.b.GetReceipts(ctx, block.Hash())
+	if err != nil {
+		return "", err
+	}
+	// block creation reward
+	reward := datong.CalcRewards(block.Number())
+	gasUses := make(map[common.Hash]uint64)
+	for _, receipt := range receipts {
+		gasUses[receipt.TxHash] = receipt.GasUsed
+	}
+	for _, tx := range block.Transactions() {
+		if gasUsed, ok := gasUses[tx.Hash()]; ok {
+			gasReward := new(big.Int).Mul(tx.GasPrice(), new(big.Int).SetUint64(gasUsed))
+			if gasReward.Sign() > 0 {
+				// transaction gas reward
+				reward.Add(reward, gasReward)
+			}
+		}
+		if common.IsFsnCall(tx.To()) {
+			fsnCallParam := &common.FSNCallParam{}
+			rlp.DecodeBytes(tx.Data(), fsnCallParam)
+			feeReward := common.GetFsnCallFee(tx.To(), fsnCallParam.Func)
+			if feeReward.Sign() > 0 {
+				// transaction fee reward
+				reward.Add(reward, feeReward)
+			}
+		}
+	}
+	return reward.String(), nil
 }
 
 //--------------------------------------------- PublicFusionAPI buile send tx args-------------------------------------
@@ -1271,20 +1320,6 @@ func AutoBuyTicket(enable bool) {
 			fusionTransactionAPI.BuyTicket(context.TODO(), args)
 		}
 	}
-}
-
-// StartAutoBuyTicket ss
-func (s *FusionTransactionAPI) StartAutoBuyTicket() error {
-	if _, err := fusionTransactionAPI.b.Coinbase(); err != nil {
-		return fmt.Errorf("StartAutoBuyTicket Error: coinbase not exist")
-	}
-	common.AutoBuyTicket = true
-	return nil
-}
-
-// StopAutoBuyTicket ss
-func (s *FusionTransactionAPI) StopAutoBuyTicket() {
-	common.AutoBuyTicket = false
 }
 
 // report illegal
