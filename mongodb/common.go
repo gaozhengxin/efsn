@@ -45,8 +45,8 @@ var (
 )
 
 var (
-	//dbname string = "fusion"
-	dbname string = "fusion2"
+	dbname string = "fusion"
+	//dbname string = "fusion2"
 
 	tbBlocks          string = "Blocks"
 	tbTransactions    string = "Transactions"
