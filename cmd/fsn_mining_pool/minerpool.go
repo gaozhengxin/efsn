@@ -1,6 +1,7 @@
 package main
 
 import (
+	"fmt"
 	"context"
 	"crypto/ecdsa"
 	"math/big"
@@ -38,13 +39,16 @@ func SetMiningPoolAccount(key manager) {
 }
 */
 
-func (mp *MiningPool) CalcProfit() {
+func (mp *MiningPool) CalcProfit(after, before uint64) {
+	log.Debug(fmt.Sprintf("mining pool calculating profit between %v and %v", after, before))
 	mpLock.Lock()
 	defer mpLock.Unlock()
-	bal := GetMiningPoolBalance()
-	newBal := getBalance()
-	mp.Profit = new(big.Int).Sub(newBal, bal)
-	SetMiningPoolBalance(newBal)
+	reward := GetBlocksReward(after, before, mp.Address)
+	if reward == nil {
+		mp.Profit = big.NewInt(0)
+		return
+	}
+	mp.Profit = reward
 }
 
 func (mp *MiningPool) SendAsset(acc common.Address, asset *Asset) ([]common.Hash, error) {
