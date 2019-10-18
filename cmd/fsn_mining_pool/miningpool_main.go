@@ -19,13 +19,13 @@ func init() {
 func main() {
 	// SetMiningPoolAccount
 	mp := GetMiningPool()
-	mp.Address = common.HexToAddress("")
-	mp.Priv, _ = crypto.HexToECDSA("")
+	mp.Address = common.HexToAddress("") //矿池地址
+	mp.Priv, _ = crypto.HexToECDSA("") //矿池私钥
 
 	// SetFundPoolAccount
 	fp := GetFundPool()
-	fp.Priv, _ = crypto.HexToECDSA("")
-	fp.Address = common.HexToAddress("")
+	fp.Address = common.HexToAddress("") //资金池地址
+	fp.Priv, _ = crypto.HexToECDSA("") //资金池私钥
 
 	InitMongo()
 	Run()
@@ -33,7 +33,8 @@ func main() {
 
 var (
 	url string = "http://0.0.0.0:8554"
-	InitialBlock uint64 = 200000
+	InitialBlock uint64 = 100
+	//InitialBlock uint64 = 200000
 	FeeRate = big.NewRat(1,10)  // 0.1
 )
 
@@ -77,15 +78,15 @@ func DoDeposit(tx ethapi.TxAndReceipt) error {
 }
 
 func DoWithdraw(m WithdrawMsg) error {
-
-	// TODO chech m.TxHash
-
 	ast := GetUserAsset(m.Address)
 	if ast != nil {
-		(*ast).Add(m.Asset)
+		ast = ast.Sub(m.Asset)
 	} else {
 		ast = m.Asset
 	}
+	ast.Reduce()
+	today := GetTodayZero().Unix()
+	ast.Align(uint64(today))
 	if !ast.IsNonneg() {
 		log.Warn("DoWithdraw fail, account: %v has no enough asset", m.Address)
 		return nil
@@ -101,17 +102,8 @@ func DoWithdraw(m WithdrawMsg) error {
 var WithdrawCh chan(WithdrawMsg) = make(chan WithdrawMsg)
 
 type WithdrawMsg struct {
-	TxHash common.Hash
 	Address common.Address
 	Asset *Asset
-}
-
-func NewWithdrawMsg(addr common.Address, amount *big.Int, start uint64, end uint64) WithdrawMsg {
-	asset, _ := NewAsset(new(big.Int).Sub(big.NewInt(0), amount), start, end)
-	return WithdrawMsg{
-		Address: addr,
-		Asset: asset,
-	}
 }
 
 // SettleAccounts runs every day 0:00
@@ -122,45 +114,58 @@ func NewWithdrawMsg(addr common.Address, amount *big.Int, start uint64, end uint
 // then updates last settle point for next peroid
 // then calculates and pays every user's profit according to policy
 func SettleAccounts() error {
-	mpLock.Lock()
-	defer mpLock.Unlock()
-	fpLock.Lock()
-	defer fpLock.Unlock()
-
 	mp := GetMiningPool()
 	fp := GetFundPool()
 
+	// 0. decide settle interval
+	p0 := GetLastSettlePoint()
+	if p0 < InitialBlock {
+		p0 = InitialBlock
+	}
+	p1 := GetHead()
+	defer SetLastSettlePoint(p1)
+	log.Info(fmt.Sprintf("do settlement between %v and %v", p0, p1))
+
 	// 1. calc mining pool profit
-	mp.CalcProfit()
+	mp.CalcProfit(p0, p1)
 
 	// 2. get fp out, replenish fp
-	totalout, err := fp.GetTotalOut()
+	totalout, err := fp.GetTotalOut(p0, p1)
 	if err != nil {
 		log.Warn("SettleAccounts get fund pool out failed", "error", err)
 	}
 	if totalout != nil {
-			_, err := mp.SendAsset(fp.Address, totalout)
-			if err != nil {
-				log.Warn("Replenish fund pool reported error", "error", err)
-			}
+		log.Info(fmt.Sprintf("fund pool total out is %v", totalout))
+		_, err := mp.SendAsset(fp.Address, totalout)
+		if err != nil {
+			log.Warn("Replenish fund pool reported error", "error", err)
+		}
+	} else {
+		log.Info("no output from fund pool")
 	}
 
-	// 3. update lastSettlePoint
-	h := GetHead()
-	SetLastSettlePoint(h)
-
-	// 4. calc and pay userProfits
+	// 3. calc and pay userProfits
 	// if withdraw, then no profit of the withdrawn part will be given in this day.
 	totalProfit := mp.Profit
+	log.Info(fmt.Sprintf("mining pool total profit is %v", totalProfit))
 	if totalProfit.Cmp(big.NewInt(0)) <= 0 {
 		log.Info("no total profit in mining pool in last settlement peroid")
 		return nil
 	}
 	uam := GetAllAssets()
+	if uam == nil {
+		return fmt.Errorf("cannot get all users asset")
+	}
 	userProfits := CalculateUserProfits(totalProfit, uam)
 
 	hs, detained := fp.PayProfits(userProfits)
-	log.Debug(fmt.Sprintf("fund pool has commited %v transactions", len(hs)), "hashes", hs)
+	hashes := ""
+	if len(hs) > 0 {
+		for _, h := range hs {
+			hashes = hashes + "  " + h.Hex()
+		}
+	}
+	log.Debug(fmt.Sprintf("fund pool has commited %v transactions", len(hs)), "hashes", hashes)
 	for _, dp := range detained {
 		err := AddDetainedProfit(dp)
 		if err != nil {
@@ -174,7 +179,7 @@ func SettleAccounts() error {
 
 func CalculateUserProfits(totalProfit *big.Int, uam *UserAssetMap) []Profit {
 	var userProfits []Profit
-	day := time.Now().Round(time.Hour * 24).Add(-1 * time.Hour * 24).Unix()
+	day := time.Now().Add(-1 * time.Hour).Unix()
 	dayUserAsset := make(map[common.Address]*big.Int)
 	for addr, a := range *uam {
 		amt := a.GetAmountByTime(uint64(day))
@@ -182,6 +187,7 @@ func CalculateUserProfits(totalProfit *big.Int, uam *UserAssetMap) []Profit {
 		profit := Profit{
 			Address: addr,
 			Time: day,
+			Amount: big.NewInt(0),
 		}
 		userProfits = append(userProfits, profit)
 	}
@@ -189,7 +195,11 @@ func CalculateUserProfits(totalProfit *big.Int, uam *UserAssetMap) []Profit {
 	for _, a := range dayUserAsset {
 		totalAsset = new(big.Int).Add(totalAsset, a)
 	}
-	for _, p := range userProfits {
+	if totalAsset.Cmp(big.NewInt(0)) < 1 {
+		return userProfits
+	}
+	for i := 0; i < len(userProfits); i++ {
+		p := userProfits[i]
 		userAsset := dayUserAsset[p.Address]
 		// totalProfit(userAsset/totalAsset)*(1 - FeeRate)
 		u := new(big.Rat).SetInt(userAsset)
@@ -198,8 +208,8 @@ func CalculateUserProfits(totalProfit *big.Int, uam *UserAssetMap) []Profit {
 		up := new(big.Rat).Quo(u, t)
 		up = new(big.Rat).Mul(up, s)
 		up = new(big.Rat).Mul(up, new(big.Rat).Sub(big.NewRat(1,1), FeeRate))
-		f, _ := up.Float64()
-		p.Amount = big.NewInt(int64(f))
+		p.Amount = new(big.Int).Quo(up.Num(), up.Denom())
+		userProfits[i] = p
 	}
 	return userProfits
 }
@@ -226,7 +236,7 @@ func GetTxType(tx ethapi.TxAndReceipt) (txtype string) {
 
 func Run() {
 	log.Info("mining pool running")
-	examinetxstimer := time.NewTimer(5 * time.Second)
+	examinetxstimer := time.NewTimer(time.Second * 5)
 	timer := NewZeroTimer()
 
 	h := GetHead()
@@ -242,15 +252,17 @@ func Run() {
 			ch := make(chan string)
 			go func(ch chan string) {
 				after := GetHead()
-				before := GetSyncHead() - 10
+				before := GetSyncHead()
 				for before < InitialBlock || before <= after {
 					log.Debug("cannot find new transactions in mongodb")
 					time.Sleep(time.Second * 5)
 				}
 				// get txs from mongodb
 				txs := GetTxs(after, before)
+				log.Debug(fmt.Sprintf("found %v relavant transactions", len(txs)))
 				for _, tx := range txs {
 					txtype := GetTxType(tx)
+					fmt.Println("txtype:" + txtype)
 					switch txtype {
 					case "DEPOSIT":
 						err := DoDeposit(tx)
@@ -263,7 +275,7 @@ func Run() {
 				}
 				var err error
 				for i := 0; i < 3; i++ {
-					err = SetHead(before - 10)
+					err = SetHead(before)
 					if err == nil {
 						break
 					}
@@ -282,6 +294,7 @@ func Run() {
 			}
 		case m := <-WithdrawCh:
 			// do withdraw
+			fmt.Println("receive withdraw message")
 			log.Info("receive withdraw message")
 			ch := make(chan string)
 			go func(ch chan string) {
@@ -308,6 +321,8 @@ func Run() {
 				}
 			}(ch)
 			if ret := <-ch; ret == "ok" {
+				log.Debug("settlement finished with no error")
+				time.Sleep(time.Minute)
 				timer = NewZeroTimer()
 			} else {
 				panic(fmt.Errorf("settle accounts error: %v", ret))
