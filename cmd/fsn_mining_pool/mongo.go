@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"math/big"
 	"strings"
+	"sync"
 	"time"
 	"github.com/FusionFoundation/efsn/common"
 	"github.com/FusionFoundation/efsn/common/hexutil"
@@ -18,8 +19,10 @@ var (
 	InitOnce bool
 	database *mgo.Database
 	MongoIP string = "localhost" // default port: 27017
-	dbname string = "fusion"
+	dbname string = "fusion2"
 )
+
+var AssetsLock *sync.Mutex = new(sync.Mutex)
 
 func InitMongo() {
 	if InitOnce {
@@ -55,7 +58,7 @@ func GetTxs(after, before uint64) []ethapi.TxAndReceipt {
 	collectionTable := database.C("Transactions")
 	d := make([]ethapi.TxAndReceipt, 0)
 	dd := make([]interface{}, 0)
-	err := collectionTable.Find(bson.M{"receipt.fsnLogTopic":"TimeLockFunc", "receipt.fsnLogData.AssetID":"0xffffffffffffffffffffffffffffffffffffffff", "receipt.fsnLogData.To":bson.M{"$regex":address,"$options":"i"}, "tx.blockNumber":bson.M{"$gte":after,"$lt":before}}).All(&dd)
+	err := collectionTable.Find(bson.M{"receipt.fsnLogTopic":"TimeLockFunc", "receipt.fsnLogData.AssetID":"0xffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff", "receipt.fsnLogData.To":bson.M{"$regex":address,"$options":"i"}, "tx.blockNumber":bson.M{"$gte":after,"$lt":before}}).All(&dd)
 	if err != nil {
 		if err.Error() != "not found" {
 			log.Warn("mongo GetTxs() ", "error", err)
@@ -75,14 +78,14 @@ func GetTxs(after, before uint64) []ethapi.TxAndReceipt {
 	return d
 }
 
-func GetTxFromAddress(addr common.Address, after uint64) []ethapi.TxAndReceipt {
+func GetTxFromAddress(addr common.Address, after, before uint64) []ethapi.TxAndReceipt {
 	log.Debug("mongo GetTxFromAddress", "address", addr, "after block", after)
 	fp := GetFundPool()
 	address := fp.Address.Hex()
 	collectionTable := database.C("Transactions")
 	d := make([]ethapi.TxAndReceipt, 0)
 	dd := make([]interface{}, 0)
-	err := collectionTable.Find(bson.M{"tx.From":bson.M{"$regex":address,"$options":"i"}}).All(&dd)
+	err := collectionTable.Find(bson.M{"tx.From":bson.M{"$regex":address,"$options":"i"}, "tx.blockNumber":bson.M{"$gte":after,"$lt":before}}).All(&dd)
 	if err != nil {
 		log.Warn("mongo GetTxFromAddress() ", "error", err)
 		return nil
@@ -100,6 +103,7 @@ func GetTxFromAddress(addr common.Address, after uint64) []ethapi.TxAndReceipt {
 	return d
 }
 
+/*
 func GetSyncHead() (sh uint64) {
 	log.Debug("mongo GetSyncHead()")
 	defer func() {
@@ -110,9 +114,28 @@ func GetSyncHead() (sh uint64) {
 	collectionTable := database.C("Transactions")
 	// db.Transactions.find().sort({'tx.blockNumber':-1}).skip(0).limit(1)
 	d := make([]bson.M, 1)
-	 collectionTable.Find(bson.M{}).Sort("-tx.blockNumber").Skip(0).Limit(1).One(&d[0])
+	collectionTable.Find(bson.M{}).Sort("-tx.blockNumber").Skip(0).Limit(1).One(&d[0])
 	if d[0] != nil {
 		 sh = uint64(d[0]["tx"].(bson.M)["blockNumber"].(int64))
+	}
+	return sh
+}
+*/
+
+// TODO
+func GetSyncHead() (sh uint64) {
+	log.Debug("mongo GetSyncHead()")
+	defer func() {
+		if r := recover(); r != nil {
+			sh = 0
+		}
+	}()
+	collectionTable := database.C("Blocks")
+	d := make([]bson.M, 1)
+	//db.Blocks.find({},{'number':1}).sort({'number':-1}).skip(0).limit(1)
+	collectionTable.Find(bson.M{}).Select(bson.M{"number":1}).Sort("-number").Skip(0).Limit(1).One(&d[0])
+	if d[0] != nil {
+		sh = uint64(d[0]["number"].(int64))
 	}
 	return sh
 }
@@ -162,7 +185,7 @@ func GetLastSettlePoint() (p uint64) {
 	}()
 	collectionTable := database.C("Miningpool")
 	d := make([]interface{}, 1)
-	err := collectionTable.Find(bson.M{"_id":"head"}).One(&d[0])
+	err := collectionTable.Find(bson.M{"_id":"settlepoint"}).One(&d[0])
 	if err != nil {
 		if err.Error() != "not found" {
 			log.Warn("mongo GetLastSettlePoint() fail", "error", err)
@@ -179,20 +202,52 @@ func GetLastSettlePoint() (p uint64) {
 func SetLastSettlePoint(p uint64) error {
 	log.Debug("mongo SetLastSettlePoint()", "head", p)
 	collectionTable := database.C("Miningpool")
-	d := bson.M{"_id":"head","value":p}
-	_, err := collectionTable.Upsert(bson.M{"_id":"head"}, d)
+	d := bson.M{"_id":"settlepoint","value":p}
+	_, err := collectionTable.Upsert(bson.M{"_id":"settlepoint"}, d)
 	if err != nil {
 		log.Warn("mongo SetLastSettlePoint failed", "error", err)
 	}
 	return err
 }
 
+func GetBlocksReward(a, b uint64, miner common.Address) *big.Int {
+	log.Debug("mongo GetBlocksReward()")
+	defer func() {
+		if r := recover(); r != nil {
+			log.Warn("GetBlocksReward failed", "error", r)
+		}
+	}()
+	collectionTable := database.C("Blocks")
+	d := make([]bson.M,0)
+	//db.Blocks.find({'number':{$gte:100, $lt:1000}, 'miner':{$regex:"0x07f35aba9555a532c0edc2bd6350c891b6f2c8d0",$options:"i"}})
+	err := collectionTable.Find(bson.M{"number":bson.M{"$gte":a,"$lt":b}, "miner":bson.M{"$regex":miner.Hex(),"$options":"i"}}).Select(bson.M{"miner":1, "reward":1}).All(&d)
+	if err != nil {
+		panic(err)
+	}
+	reward := big.NewInt(0)
+	log.Debug(fmt.Sprintf("mining pool has mined %v blocks between %v and %v", len(d), a, b))
+	for _, b := range d {
+		if b["reward"] != nil {
+			r, ok := new(big.Int).SetString(b["reward"].(string), 10)
+			if !ok {
+				log.Warn("reward string error", "reward", b["reward"])
+				continue
+			}
+			reward = new(big.Int).Add(reward, r)
+		}
+	}
+	return reward
+}
+
 func GetAllAssets() (uam *UserAssetMap) {
+	AssetsLock.Lock()
+	defer AssetsLock.Unlock()
 	defer func() {
 		if r := recover(); r != nil {
 			log.Warn("GetAllAssets error", "error", r)
 		}
 	}()
+	uam = new(UserAssetMap)
 	*uam = make(map[common.Address]*Asset)
 	collectionTable := database.C("Assets")
 	c, _ := collectionTable.Find(bson.M{}).Count()
@@ -221,8 +276,6 @@ func GetAllAssets() (uam *UserAssetMap) {
 
 		ast.Sort()
 		ast.Reduce()
-		today := time.Now().Add(-1 * time.Hour * 12).Round(time.Hour * 24).Unix() // today at 0:00 am
-		ast.Align(uint64(today))
 
 		(*uam)[common.HexToAddress(doc["_id"].(string))] = ast
 	}
@@ -230,12 +283,15 @@ func GetAllAssets() (uam *UserAssetMap) {
 }
 
 func SetUserAsset(usr common.Address, ast Asset) error {
+	AssetsLock.Lock()
+	defer AssetsLock.Unlock()
 	log.Debug("mongo SetUserAsset()", "user", usr, "asset", ast)
 
 	ast.Sort()
 	ast.Reduce()
-	today := time.Now().Add(-1 * time.Hour * 12).Round(time.Hour * 24).Unix() // today at 0:00 am
+	today := GetTodayZero().Unix()
 	ast.Align(uint64(today))
+	ast.Reduce()
 
 	collectionTable := database.C("Assets")
 	id := strings.ToLower(usr.Hex())
@@ -246,6 +302,8 @@ func SetUserAsset(usr common.Address, ast Asset) error {
 }
 
 func GetUserAsset(usr common.Address) *Asset {
+	AssetsLock.Lock()
+	defer AssetsLock.Unlock()
 	log.Debug("mongo GetUserAsset()")
 	collectionTable := database.C("Assets")
 	id := strings.ToLower(usr.Hex())
@@ -273,8 +331,6 @@ func GetUserAsset(usr common.Address) *Asset {
 
 	ast.Sort()
 	ast.Reduce()
-	today := time.Now().Add(-1 * time.Hour * 12).Round(time.Hour * 24).Unix() // today at 0:00 am
-	ast.Align(uint64(today))
 
 	return ast
 }
