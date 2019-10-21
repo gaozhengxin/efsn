@@ -20,7 +20,7 @@ var (
 	InitOnce bool
 	database *mgo.Database
 	MongoIP string = "localhost" // default port: 27017
-	dbname string = "fusion2"
+	dbname string = "fusion"
 )
 
 var AssetsLock *sync.Mutex = new(sync.Mutex)
@@ -47,6 +47,7 @@ func InitMongo() {
 		break
 	}
 	Session.SetMode(mgo.Monotonic, true)
+	Session.SetSocketTimeout(1 * time.Hour)
 	database = Session.DB(dbname)
 	fmt.Printf("mongodb mongoServerInit finished.\n")
 	InitOnce = false
@@ -109,13 +110,18 @@ func GetSyncHead() (sh uint64) {
 	log.Debug("mongo GetSyncHead()")
 	defer func() {
 		if r := recover(); r != nil {
+			log.Debug("GetSyncHead() failed", "error", r)
 			sh = 0
 		}
 	}()
 	collectionTable := database.C("Transactions")
 	// db.Transactions.find().sort({'tx.blockNumber':-1}).skip(0).limit(1)
 	d := make([]bson.M, 1)
-	collectionTable.Find(bson.M{}).Sort("-tx.blockNumber").Skip(0).Limit(1).One(&d[0])
+	err := collectionTable.Find(bson.M{}).Sort("-tx.blockNumber").Skip(0).Limit(1).One(&d[0])
+	if err != nil {
+		log.Debug("GetSyncHead() failed", "error", err)
+		return 0
+	}
 	if d[0] != nil {
 		 sh = uint64(d[0]["tx"].(bson.M)["blockNumber"].(int64))
 	}
@@ -123,18 +129,22 @@ func GetSyncHead() (sh uint64) {
 }
 */
 
-// TODO
 func GetSyncHead() (sh uint64) {
 	log.Debug("mongo GetSyncHead()")
 	defer func() {
 		if r := recover(); r != nil {
+			log.Debug("GetSyncHead() failed",  "error", r)
 			sh = 0
 		}
 	}()
 	collectionTable := database.C("Blocks")
 	d := make([]bson.M, 1)
 	//db.Blocks.find({},{'number':1}).sort({'number':-1}).skip(0).limit(1)
-	collectionTable.Find(bson.M{}).Select(bson.M{"number":1}).Sort("-number").Skip(0).Limit(1).One(&d[0])
+	err := collectionTable.Find(bson.M{}).Select(bson.M{"number":1}).Sort("-number").Skip(0).Limit(1).One(&d[0])
+	if err != nil {
+		log.Debug("GetSyncHead() failed", "error", err)
+		return 0
+	}
 	if d[0] != nil {
 		sh = uint64(d[0]["number"].(int64))
 	}
