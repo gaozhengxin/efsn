@@ -7,6 +7,7 @@ import (
 	"sync"
 	"time"
 	"github.com/FusionFoundation/efsn/common"
+	"github.com/FusionFoundation/efsn/crypto"
 	"github.com/FusionFoundation/efsn/log"
 )
 
@@ -30,13 +31,13 @@ func GetFundPool() *FundPool {
 	return fp
 }
 
-// TODO
-/*
-func SetFundPoolAccount(key manager) {
+func SetFundPool(key *ecdsa.PrivateKey) {
+	fp := GetFundPool()
 	fpLock.Lock()
 	defer fpLock.Unlock()
+	fp.Priv = key
+	mp.Address = crypto.PubkeyToAddress(key.PublicKey)
 }
-*/
 
 func (fp *FundPool) GetTotalOut(after, before uint64) (total *Asset, err error) {
 	log.Debug("fund pool GetTotalOut")

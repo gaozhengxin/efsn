@@ -7,6 +7,7 @@ import (
 	"math/big"
 	"sync"
 	"github.com/FusionFoundation/efsn/common"
+	"github.com/FusionFoundation/efsn/crypto"
 	"github.com/FusionFoundation/efsn/log"
 )
 
@@ -31,13 +32,13 @@ func GetMiningPool() *MiningPool {
 	return mp
 }
 
-// TODO
-/*
-func SetMiningPoolAccount(key manager) {
-	fpLock.Lock()
-	defer fpLock.Unlock()
+func SetMiningPool(key *ecdsa.PrivateKey) {
+	mp := GetMiningPool()
+	mpLock.Lock()
+	defer mpLock.Unlock()
+	mp.Priv = key
+	mp.Address = crypto.PubkeyToAddress(key.PublicKey)
 }
-*/
 
 func (mp *MiningPool) CalcProfit(after, before uint64) {
 	log.Debug(fmt.Sprintf("mining pool calculating profit between %v and %v", after, before))
@@ -55,10 +56,6 @@ func (mp *MiningPool) SendAsset(acc common.Address, asset *Asset) ([]common.Hash
 	log.Debug("mining pool, SendAsset()", "to", acc, "asset", asset)
 	mpLock.Lock()
 	defer mpLock.Unlock()
-	defer func() {
-		bal := getBalance()
-		SetMiningPoolBalance(bal)
-	}()
 
 	return sendAsset(mp.Address, acc, asset, mp.Priv)
 }

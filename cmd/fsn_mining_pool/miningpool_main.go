@@ -2,37 +2,83 @@ package main
 
 import (
 	"fmt"
+	"io/ioutil"
 	"math/big"
 	"os"
 	"time"
+	"github.com/FusionFoundation/efsn/accounts/keystore"
 	"github.com/FusionFoundation/efsn/common"
-	"github.com/FusionFoundation/efsn/crypto"
 	"github.com/FusionFoundation/efsn/internal/ethapi"
 	"github.com/FusionFoundation/efsn/log"
+	"github.com/spf13/cobra"
 )
 
-func init() {
+func initCmd() {
+	rootCmd.PersistentFlags().StringVar(&mpkeyfile, "mkey", "", "mining pool keyfile path")
+	rootCmd.PersistentFlags().StringVar(&mppassphrase, "mpasswd", "", "mining pool keyfile password")
+	rootCmd.PersistentFlags().StringVar(&fpkeyfile, "fkey", "", "fund pool keyfile path")
+	rootCmd.PersistentFlags().StringVar(&fppassphrase, "fpasswd", "", "fund pool keyfile password")
+}
+
+func initApp() {
+	initCmd()
 	log.Root().SetHandler(log.LvlFilterHandler(log.LvlDebug, log.StreamHandler(os.Stderr, log.TerminalFormat(true))))
+	InitMongo()
+}
+
+var (
+	mpkeyfile string
+	mppassphrase string
+	fpkeyfile string
+	fppassphrase string
+)
+
+var rootCmd = &cobra.Command{
+	Run: func(cmd *cobra.Command, args []string) {
+		runApp()
+	},
 }
 
 func main() {
-	// SetMiningPoolAccount
+	initApp()
+	if err := rootCmd.Execute(); err != nil {
+		log.Error(err.Error())
+	}
+}
+
+func runApp() {
+	keyjson1, err1 := ioutil.ReadFile(mpkeyfile)
+	if err1 != nil {
+		log.Error("read mining pool key file failed", "error", err1)
+	}
+	k1, err1 := keystore.DecryptKey(keyjson1, mppassphrase)
+	if err1 != nil {
+		log.Error("decrypt mining pool key failed", "error", err1)
+	}
+
+	keyjson2, err2 := ioutil.ReadFile(fpkeyfile)
+	if err2 != nil {
+		log.Error("read fund pool key file failed", "error", err1)
+	}
+	k2, err2 := keystore.DecryptKey(keyjson2, fppassphrase)
+	if err2 != nil {
+		log.Error("decrypt fund pool key failed", "error", err2)
+	}
+
+	SetMiningPool(k1.PrivateKey)
+	SetFundPool(k2.PrivateKey)
 	mp := GetMiningPool()
-	mp.Address = common.HexToAddress("") //矿池地址
-	mp.Priv, _ = crypto.HexToECDSA("") //矿池私钥
-
-	// SetFundPoolAccount
 	fp := GetFundPool()
-	fp.Address = common.HexToAddress("") //资金池地址
-	fp.Priv, _ = crypto.HexToECDSA("") //资金池私钥
+	log.Info("app is prepared", "mining pool", mp.Address.Hex(), "fund pool", fp.Address.Hex())
 
-	InitMongo()
-	Run()
+	go ServerRun()
+	go Run()
+	select{}
 }
 
 var (
 	url string = "http://0.0.0.0:8554"
-	InitialBlock uint64 = 100
+	InitialBlock uint64 = 10
 	//InitialBlock uint64 = 200000
 	FeeRate = big.NewRat(1,10)  // 0.1
 )
@@ -45,6 +91,19 @@ type Profit struct {
 	Time int64
 }
 
+func ParseTime(input interface{}) (t uint64) {
+	defer func() {
+		if r := recover(); r != nil {
+			t = 0
+		}
+	}()
+	t = input.(uint64)
+	if t >= 9223372036854775808 {
+		return 0
+	}
+	return
+}
+
 func DoDeposit(tx ethapi.TxAndReceipt) error {
 	defer func() {
 		if r := recover(); r != nil {
@@ -53,8 +112,8 @@ func DoDeposit(tx ethapi.TxAndReceipt) error {
 	}()
 
 	from := tx.Tx.From
-	start := tx.Receipt["fsnLogData"].(map[string]interface{})["StartTime"].(uint64)
-	end := tx.Receipt["fsnLogData"].(map[string]interface{})["EndTime"].(uint64)
+	start := ParseTime(tx.Receipt["fsnLogData"].(map[string]interface{})["StartTime"])
+	end := ParseTime(tx.Receipt["fsnLogData"].(map[string]interface{})["EndTime"])
 	amt := tx.Receipt["fsnLogData"].(map[string]interface{})["Value"].(*big.Int)
 	asset, err := NewAsset(amt, start, end)
 	if err != nil {
@@ -269,6 +328,7 @@ func Run() {
 
 	h := GetHead()
 	if h == 0 {
+		log.Info("set head to initial block", "initial block", InitialBlock)
 		SetHead(InitialBlock)
 	}
 
@@ -281,6 +341,7 @@ func Run() {
 			go func(ch chan string) {
 				after := GetHead()
 				before := GetSyncHead()
+				log.Debug(fmt.Sprintf("try to fetch txs between %v and %v", after, before))
 				for before < InitialBlock || before <= after {
 					log.Debug("cannot find new transactions in mongodb")
 					time.Sleep(time.Second * 5)
@@ -302,11 +363,12 @@ func Run() {
 					}
 				}
 				var err error
-				for i := 0; i < 3; i++ {
+				for i := 0; i < 30; i++ {
 					err = SetHead(before)
 					if err == nil {
 						break
 					}
+					time.Sleep(time.Second * 5)
 				}
 				if err != nil {
 					ch <- err.Error()
