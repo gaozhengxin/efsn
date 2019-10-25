@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"math/big"
+	"reflect"
 	"strconv"
 	"strings"
 	"sync"
@@ -1078,6 +1079,19 @@ func ParseTxs(txs []*ethapi.TxAndReceipt) (mtxs []mgoTx, err error) {
 	return
 }
 
+func CeilInt64(n interface{}) interface{} {
+	kind := reflect.TypeOf(n).Kind().String()
+	if kind == "uint64" && kind > uint64(9223372036854775808) {
+		n = uint64(9223372036854775808)
+	}
+	if kind == "map" {
+		for k, v := range kind.(map[string]interface{}) {
+			n[k] = CeilInt64(v)
+		}
+	}
+	return n
+}
+
 func ParseTx(tx *ethapi.TxAndReceipt) (mtx *mgoTx, err error) {
 	defer func() {
 		if r := recover(); r != nil {
@@ -1100,7 +1114,8 @@ func ParseTx(tx *ethapi.TxAndReceipt) (mtx *mgoTx, err error) {
 		return
 	}
 	mtx.Receipt.From = tx.Receipt["from"].(string)
-	mtx.Receipt.FsnLogData = tx.Receipt["fsnLogData"]
+	fsnLogData = tx.Receipt["fsnLogData"]
+	mtx.Receipt.FsnLogData = CeilInt64(fsnLogData)
 	if tx.Receipt["fsnLogTopic"] != nil {
 		mtx.Receipt.FsnLogTopic = tx.Receipt["fsnLogTopic"].(string)
 	}
