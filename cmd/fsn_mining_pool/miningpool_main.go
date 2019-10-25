@@ -67,6 +67,7 @@ func runApp() {
 
 	SetMiningPool(k1.PrivateKey)
 	SetFundPool(k2.PrivateKey)
+
 	mp := GetMiningPool()
 	fp := GetFundPool()
 	log.Info("app is prepared", "mining pool", mp.Address.Hex(), "fund pool", fp.Address.Hex())
@@ -132,6 +133,7 @@ func DoDeposit(tx ethapi.TxAndReceipt) error {
 		log.Warn("DoDeposit failed", "error", err)
 		return err
 	}
+	AddDeposit(tx.Tx.Hash, ast)
 	return nil
 }
 
@@ -167,14 +169,19 @@ func DoWithdraw(m WithdrawMsg) {
 	log.Info("DoWithdraw send asset to user")
 	fp := GetFundPool()
 	hs, err := fp.SendAsset(m.Address, ast)
-	if err != nil {
-		log.Warn("DoWithdraw send asset failed", "error", err)
-	}
 	ret := &WithdrawRet{
 		Hs: hs,
 		Id: m.Id,
 	}
 	WithdrawRetCh <- *ret
+	if err != nil || hs == nil || len(hs) == 0 {
+		log.Warn("DoWithdraw send asset failed", "error", err)
+		return
+	}
+	err = AddWithdraw(hs[0], m)
+	if err != nil {
+		log.Warn("DoWithdraw success but write record failed", "error", err)
+	}
 	return
 }
 
@@ -215,10 +222,22 @@ func SettleAccounts() error {
 
 	// 1. calc mining pool profit
 	mp.CalcProfit(p0, p1)
-
-	// 2. calc and pay userProfits
-	// if withdraw, then no profit of the withdrawn part will be given in this day.
 	totalProfit := mp.Profit
+
+	// 2. get fp out, replenish fp
+	ast, err := NewAsset(totalProfit, 0, 0)
+	if ast != nil && err != nil {
+		log.Info(fmt.Sprintf("mining pool profit is %v", ast))
+		_, err := mp.SendAsset(fp.Address, ast)
+		if err != nil {
+			log.Warn("Replenish fund pool reported error", "error", err)
+		}
+	} else {
+		log.Warn("cannot convert profit to asset", "error", err)
+	}
+
+	// 3. calc and pay userProfits
+	// if withdraw, then no profit of the withdrawn part will be given in this day.
 	log.Info(fmt.Sprintf("mining pool total profit is %v", totalProfit))
 	if totalProfit.Cmp(big.NewInt(0)) <= 0 {
 		log.Info("no total profit in mining pool in last settlement peroid")
@@ -244,21 +263,6 @@ func SettleAccounts() error {
 			log.Warn("Write detained profit failed", "error", err)
 			continue
 		}
-	}
-
-	// 3. get fp out, replenish fp
-	income := new(big.Rat).SetInt(totalProfit)
-	income = new(big.Rat).Mul(income, FeeRate)
-	incomeint := new(big.Int).Quo(income.Num(), income.Denom())
-	incomeast, err := NewAsset(incomeint, 0, 0)
-	if incomeast != nil && err != nil {
-		log.Info(fmt.Sprintf("mining pool income is %v", incomeast))
-		_, err := mp.SendAsset(fp.Address, incomeast)
-		if err != nil {
-			log.Warn("Replenish fund pool reported error", "error", err)
-		}
-	} else {
-		log.Info("no mining pool income")
 	}
 
 	return err
