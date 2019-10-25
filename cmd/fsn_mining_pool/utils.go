@@ -17,8 +17,9 @@ func NewZeroTimer() *time.Timer {
 	today := GetTodayZero()
 	next := today.Add(time.Hour * 24)
 	fmt.Printf("\nzero timer: next zero is %v\n\n", next)
-	timer := time.NewTimer(next.Sub(time.Now()))
-	//timer := time.NewTimer(time.Second * 20) //测试
+	//timer := time.NewTimer(next.Sub(time.Now()))
+	//fmt.Printf("!!!! timer is set: %v\n\n", next.Sub(time.Now()))
+	timer := time.NewTimer(time.Second * 20) //测试
 	return timer
 }
 
@@ -115,7 +116,7 @@ func sendAsset(from, to common.Address, asset *Asset, priv *ecdsa.PrivateKey) ([
 	if !asset.IsNonneg() {
 		return nil, fmt.Errorf("sendAsset() failed: cannot send negative asset")
 	}
-	today := time.Now().Add(-1 * time.Hour * 12).Round(time.Hour * 24).Unix() // today at 0:00 am
+	today := GetTodayZero().Unix()
 	asset.Align(uint64(today))
 
 	var argss []common.TimeLockArgs
@@ -148,11 +149,6 @@ func sendAsset(from, to common.Address, asset *Asset, priv *ecdsa.PrivateKey) ([
 	//chainID := big.NewInt(46688)
 	chainID := big.NewInt(55555)
 
-	nonce, err := client.PendingNonceAt(context.Background(), from)
-	if err != nil {
-		return nil, fmt.Errorf("cannot nonce", "error", err)
-	}
-
 	gasLimit := uint64(80000)
 	gasPrice := big.NewInt(1000000000)
 
@@ -161,13 +157,19 @@ func sendAsset(from, to common.Address, asset *Asset, priv *ecdsa.PrivateKey) ([
 
 	var hs []common.Hash
 	for _, args := range argss {
+		nonce, err := client.PendingNonceAt(context.Background(), from)
+		if err != nil {
+			return nil, fmt.Errorf("cannot get nonce", "error", err)
+		}
+		var param common.FSNCallParam
 		var funcData []byte
 		if uint64(*args.EndTime) == common.TimeLockForever {
-			funcData, _ = args.ToData(common.TimeLockToAsset)
+			funcData, _ = args.SendAssetArgs.ToData()
+			param = common.FSNCallParam{Func: common.SendAssetFunc, Data: funcData}
 		} else {
-			funcData, _ = args.ToData(common.TimeLockToTimeLock)
+			funcData, _ = args.ToData(common.AssetToTimeLock)
+			param = common.FSNCallParam{Func: common.TimeLockFunc, Data: funcData}
 		}
-		param := common.FSNCallParam{Func: common.TimeLockFunc, Data: funcData}
 		d, _ := param.ToBytes()
 		data := hexutil.Bytes(d)
 		if err != nil {
@@ -185,7 +187,6 @@ func sendAsset(from, to common.Address, asset *Asset, priv *ecdsa.PrivateKey) ([
 			continue
 		}
 		hs = append(hs, h)
-		nonce++
 	}
 
 	var notconfirmed []common.Hash
@@ -193,7 +194,7 @@ func sendAsset(from, to common.Address, asset *Asset, priv *ecdsa.PrivateKey) ([
 	f := &CheckTx{}
 	for _, h := range hs {
 		log.Debug("check transaction", "hash", h.Hex())
-		_, err := Try(5, f, h)
+		_, err := Try(10, f, h)
 		if err != nil {
 			notconfirmed = append(notconfirmed, h)
 		}

@@ -18,8 +18,8 @@ func initCmd() {
 	rootCmd.PersistentFlags().StringVarP(&sync.Endpoint, "attach", "a", "", "ipc socket path")
 	rootCmd.PersistentFlags().StringVar(&sync.IpcDataDir, "ipcdatadir", "./ipccli", "ipc socket path")
 	rootCmd.PersistentFlags().StringVar(&sync.IpcDocRoot, "ipcdocroot", "./ipccli", "ipc socket path")
-	rootCmd.PersistentFlags().BoolVarP(&partial, "partial", "p", false, "sync txs from selected addresses")
-	rootCmd.PersistentFlags().StringSliceVar(&sync.Myaddrs, "addresses", []string{}, "addresses")
+	//rootCmd.PersistentFlags().BoolVarP(&partial, "partial", "p", false, "sync txs from selected addresses")
+	//rootCmd.PersistentFlags().StringSliceVar(&sync.Myaddrs, "addresses", []string{}, "addresses")
 }
 
 var partial bool = false
