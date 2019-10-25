@@ -20,7 +20,7 @@ var (
 	InitOnce bool
 	database *mgo.Database
 	MongoIP string = "localhost" // default port: 27017
-	dbname string = "fusion"
+	dbname string = "fusion-test"
 )
 
 var AssetsLock *sync.Mutex = new(sync.Mutex)
@@ -67,6 +67,7 @@ func GetTxs(after, before uint64) []ethapi.TxAndReceipt {
 		}
 		return nil
 	}
+	fmt.Printf("\nlen(dd) is %v\n", len(dd))
 	if len(dd) > 0 {
 		for _, obj := range dd {
 			tx, err := ParseTxAndReceipt(obj.(bson.M))
@@ -357,8 +358,23 @@ func AddWithdrawLog(req withdraw.WithdrawRequest) error {
 func AddDetainedProfit(p Profit) error {
 	log.Debug("mongo AddDetainedProfit()", "profit", p)
 	collectionTable := database.C("DetainedProfits")
-	err := collectionTable.Insert(p)
+	mgop := ParseProfit(p)
+	err := collectionTable.Insert(mgop)
 	return err
+}
+
+type MgoProfit struct {
+	Address string `bson:"address"`
+	Amount string `bson:"amount"`
+	Time int64 `bson:"time"`
+}
+
+func ParseProfit(p Profit) MgoProfit {
+	return MgoProfit{
+		Address:p.Address.Hex(),
+		Amount:p.Amount.String(),
+		Time:p.Time,
+	}
 }
 
 func SetMiningPoolBalance(bal *big.Int) {
