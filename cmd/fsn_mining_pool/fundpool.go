@@ -36,7 +36,7 @@ func SetFundPool(key *ecdsa.PrivateKey) {
 	fpLock.Lock()
 	defer fpLock.Unlock()
 	fp.Priv = key
-	mp.Address = crypto.PubkeyToAddress(key.PublicKey)
+	fp.Address = crypto.PubkeyToAddress(key.PublicKey)
 }
 
 func (fp *FundPool) GetTotalOut(after, before uint64) (total *Asset, err error) {
