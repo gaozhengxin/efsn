@@ -74,7 +74,7 @@ func (fp *FundPool) PayProfits(profits []Profit) ([]common.Hash, []Profit) {
 		log.Debug("fund pool send profit", "profit", p)
 		ast, _ := NewAsset(p.Amount, 0, 0)
 		hash, err := fp.SendAsset(p.Address, ast)
-		if err != nil {
+		if err != nil || hash == nil || len(hash) == 0 {
 			detained = append(detained, p)
 			continue
 		}
