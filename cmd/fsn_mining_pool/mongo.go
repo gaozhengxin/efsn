@@ -20,7 +20,7 @@ var (
 	InitOnce bool
 	database *mgo.Database
 	MongoIP string = "localhost" // default port: 27017
-	dbname string = "fusion-test"
+	dbname string = "fusion"
 )
 
 var AssetsLock *sync.Mutex = new(sync.Mutex)
@@ -351,6 +351,23 @@ func AddWithdrawLog(req withdraw.WithdrawRequest) error {
 	log.Debug("mongo AddWithdrawLog()")
 	collectionTable := database.C("WithdrawLogs")
 	d := bson.M{"withdrawrequest":req}
+	err := collectionTable.Insert(d)
+	return err
+}
+
+func AddWithdraw(h common.Hash, m WithdrawMsg) error {
+	log.Debug("mongo AddWithdraw()")
+	collectionTable := database.C("Withdraw")
+	d := bson.M{"txhash":h.Hex(), "withdraw":m}
+	err := collectionTable.Insert(d)
+	return err
+}
+
+func AddDeposit(txhash common.Hash, ast *Asset) error {
+	log.Debug("mongo AddWithdraw()")
+	collectionTable := database.C("Deposit")
+	mgoast := ConvertAsset(*ast)
+	d := bson.M{"txhash":txhash.Hex(), "asset":mgoast}
 	err := collectionTable.Insert(d)
 	return err
 }
