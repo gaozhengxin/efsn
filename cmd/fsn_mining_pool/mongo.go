@@ -358,9 +358,20 @@ func AddWithdrawLog(req withdraw.WithdrawRequest) error {
 func AddWithdraw(h common.Hash, m WithdrawMsg) error {
 	log.Debug("mongo AddWithdraw()")
 	collectionTable := database.C("Withdraw")
-	d := bson.M{"txhash":h.Hex(), "withdraw":m}
+	mm := mgoWithdrawMsg{
+		Address: m.Address.Hex(),
+		Asset: ConvertAsset(*m.Asset),
+		Id: m.Id,
+	}
+	d := bson.M{"txhash":h.Hex(), "withdraw":mm}
 	err := collectionTable.Insert(d)
 	return err
+}
+
+type mgoWithdrawMsg struct {
+	Address string `bson:"address"`
+	Asset mgoAsset `bson:"asset"`
+	Id int `bson:"id"`
 }
 
 func AddDeposit(txhash common.Hash, user common.Address, ast *Asset) error {
