@@ -99,7 +99,7 @@ func ParseTime(input interface{}) (t uint64) {
 		}
 	}()
 	t = input.(uint64)
-	if t >= 9223372036854775808 {
+	if t >= 9223372036854775807 {
 		return 0
 	}
 	return
@@ -113,8 +113,12 @@ func DoDeposit(tx ethapi.TxAndReceipt) error {
 	}()
 
 	from := tx.Tx.From
-	start := ParseTime(tx.Receipt["fsnLogData"].(map[string]interface{})["StartTime"])
-	end := ParseTime(tx.Receipt["fsnLogData"].(map[string]interface{})["EndTime"])
+	start := uint64(0)
+	end := uint64(0)
+	if tx.Receipt["fsnLogTopic"] == "TimeLockFunc" {
+		start = ParseTime(tx.Receipt["fsnLogData"].(map[string]interface{})["StartTime"])
+		end = ParseTime(tx.Receipt["fsnLogData"].(map[string]interface{})["EndTime"])
+	}
 	amt := tx.Receipt["fsnLogData"].(map[string]interface{})["Value"].(*big.Int)
 	asset, err := NewAsset(amt, start, end)
 	if err != nil {
@@ -133,7 +137,7 @@ func DoDeposit(tx ethapi.TxAndReceipt) error {
 		log.Warn("DoDeposit failed", "error", err)
 		return err
 	}
-	AddDeposit(tx.Tx.Hash, ast)
+	AddDeposit(tx.Receipt["transactionHash"].(common.Hash), from, ast)
 	return nil
 }
 
@@ -226,7 +230,7 @@ func SettleAccounts() error {
 
 	// 2. get fp out, replenish fp
 	ast, err := NewAsset(totalProfit, 0, 0)
-	if ast != nil && err != nil {
+	if ast != nil && err == nil {
 		log.Info(fmt.Sprintf("mining pool profit is %v", ast))
 		_, err := mp.SendAsset(fp.Address, ast)
 		if err != nil {
@@ -313,7 +317,7 @@ func GetTxType(tx ethapi.TxAndReceipt) (txtype string) {
 		}
 	}()
 	mp := GetMiningPool()
-	if tx.Receipt["fsnLogTopic"] == "TimeLockFunc" {
+	if tx.Receipt["fsnLogTopic"] == "TimeLockFunc" || tx.Receipt["fsnLogTopic"] == "SendAssetFunc" {
 		if tx.Receipt["status"].(int) != 1 {
 			return ""
 		}
