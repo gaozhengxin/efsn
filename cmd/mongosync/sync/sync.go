@@ -34,9 +34,9 @@ func InitSync() {
 	glog.Root().SetHandler(glog.LvlFilterHandler(glog.LvlDebug, glog.StreamHandler(os.Stderr, glog.TerminalFormat(true))))
 }
 
-var Myaddrs []string  = []string{"0x2b1a3eca81ba03a9a4c95f4a04679c90838d7165"}
+var Myaddrs []string  = []string{""}
 
-var Endpoint = "/home/ezreal/fsn_mongo/main1/efsn.ipc"
+var Endpoint = ""
 
 var MaxGoroutineNumber uint64 = 1000
 
@@ -158,6 +158,7 @@ func Sync() {
 				//fmt.Printf("\n\n\n\n============\n  height = %v\n  head = %v\n  head + n = %v\n============\n\n\n\n", height, head, head + n)
 
 				var wg sync.WaitGroup
+				// 一波最多并行获取MaxGoroutineNumber个区块, 每个协程内串行获取区块中的交易, 一波结束后再进入下一波.
 				for i := head; i < head + n; i++ {
 					wg.Add(1)
 					go func(head uint64, h *uint64) {
@@ -188,7 +189,14 @@ func Sync() {
 
 						*h++
 
-						glog.Debug("sync", "block number", head, "transactions", fmt.Sprintf("%+v", txs))
+						hs := ""
+						if l := len(txs); l > 0 {
+							hs = txs[0].Tx.Hash.Hex()
+							for i := 1; i < l; i++ {
+								hs = hs + ", " + txs[i].Tx.Hash.Hex()
+							}
+						}
+						glog.Debug("sync", "block number", head, "transactions", hs)
 						wg.Done()
 					}(i, &h)
 				}
@@ -230,6 +238,7 @@ var (
 )
 
 func ipcInit() {
+	fmt.Printf("!!!!! Endpoint is %v\n", Endpoint)
 	client, err := rpc.Dial(Endpoint)
 	if err != nil {
 		log.Fatal(err)
