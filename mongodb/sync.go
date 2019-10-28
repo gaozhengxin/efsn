@@ -6,7 +6,6 @@ import (
 	"errors"
 	"fmt"
 	"math/big"
-	"reflect"
 	"strconv"
 	"strings"
 	"sync"
@@ -1080,11 +1079,11 @@ func ParseTxs(txs []*ethapi.TxAndReceipt) (mtxs []mgoTx, err error) {
 }
 
 func CeilInt64(n interface{}) interface{} {
-	kind := reflect.TypeOf(n).Kind().String()
-	if kind == "uint64" && n.(uint64) > uint64(9223372036854775808) {
-		n = uint64(9223372036854775808)
+	t := fmt.Sprintf("%T", n)
+	if t == "uint64" && n.(uint64) >= uint64(9223372036854775808) {
+		n = uint64(9223372036854775807)
 	}
-	if kind == "map" {
+	if t == "map[string]interface {}" {
 		for k, v := range n.(map[string]interface{}) {
 			n.(map[string]interface{})[k] = CeilInt64(v)
 		}
