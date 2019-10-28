@@ -3,21 +3,26 @@ package main
 import (
 	"encoding/json"
 	"fmt"
+	"time"
 	w "github.com/FusionFoundation/efsn/cmd/fsn_mining_pool/withdraw"
 	"github.com/FusionFoundation/efsn/crypto"
 )
 
-//curl -X POST -H "Content-Type":application/json --data '{"hash":"0x85b69a0bbcc7c6d52338a9f78983405012443d4a1da9e3d9d808d472bd90db95","address":"0x0963a18ea497b7724340fdfe4ff6e060d3f9e388","amount":"100","sig":"b060ccafe5f0dbe1e423c1d6fac06d9a21f25f5b7666084e741b4c39e5db485a109f52dc4570afd5926e12c0605e75eb331584f95ac4646ad7f1d3a8e12b9c1e00"}' http://0.0.0.0:9990
+//curl -X POST -H "Content-Type":application/json --data '{"hash":"0x7dcab6207798cda324fd41b4c745f186a60b10834bc0c77a37e8808a13eea86f","address":"0x0122BF3930c1201A21133937Ad5C83Eb4dEd1b08","amount":"100","timestamp":"1572252192","sig":"f0ad9d40a5cb76ea1a89813290a8abfdce4046448f24a73342195c42945c19fe0dab909af713d1fddc5db99be37d21487e6f9422acfb16bfbdcb84fb6dcdd77101"}' http://0.0.0.0:9990
 
 func main() {
 	req := &w.WithdrawRequest{
-		Address:"0x0963a18ea497b7724340fdfe4ff6e060d3f9e388",
+		Address:"",
 		Amount:"100",
+		Timestamp:fmt.Sprintf("%v", time.Now().Unix()),
 	}
 	req.MakeHash()
 	fmt.Printf("req:\n%+v\n", req)
-	priv, _ := crypto.HexToECDSA("")
-	err := w.SignWithdrawRequest(req, priv)
+	priv, err := crypto.HexToECDSA("")
+	if err != nil {
+		panic(err)
+	}
+	err = w.SignWithdrawRequest(req, priv)
 	if err != nil {
 		panic(err)
 	}
