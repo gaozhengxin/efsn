@@ -11,7 +11,7 @@ var LOGPRINTALL bool = false// true: print all log, false: do nothing
 var (
 	Mongo bool = false
 	MongoSlave bool = false
-	MongoIP string = "localhost" // default port: 27017
+	MongoIP string = "localhost:27017" // default port: 27017
 	URL string
 	MatchTrade string = ""
 	sep9 string = "dcrmsep9"
@@ -46,7 +46,6 @@ var (
 
 var (
 	dbname string = "fusion"
-	//dbname string = "fusion2"
 
 	tbBlocks          string = "Blocks"
 	tbTransactions    string = "Transactions"
