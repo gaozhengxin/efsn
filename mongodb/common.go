@@ -163,7 +163,7 @@ type mgoTx struct {
 	TransactionIndex uint64   `bson:"transactionIndex"`
 	From             string   `bson:"from"`
 	To               string   `bson:"to"`
-	Value            float64  `bson:"value"`
+	Value            string   `bson:"value"`
 	GasLimit         uint64   `bson:"gasLimit"`
 	GasPrice         string   `bson:"gasPrice"`
 	GasUsed          uint64   `bson:"gasUsed"`
@@ -205,7 +205,7 @@ type mgoTxEth struct {
 	TransactionIndex uint64   `bson:"transactionIndex"`
 	From             string   `bson:"from"`
 	To               string   `bson:"to"`
-	Value            uint64   `bson:"value"`
+	Value            string   `bson:"value"`
 	Gas              uint64   `bson:"gasLimit"`
 	GasPrice         string   `bson:"gasPrice"`
 }

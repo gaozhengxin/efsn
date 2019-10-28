@@ -115,11 +115,17 @@ func DoDeposit(tx ethapi.TxAndReceipt) error {
 	from := tx.Tx.From
 	start := uint64(0)
 	end := uint64(0)
+	mp := GetMiningPool()
 	if tx.Receipt["fsnLogTopic"] == "TimeLockFunc" {
 		start = ParseTime(tx.Receipt["fsnLogData"].(map[string]interface{})["StartTime"])
 		end = ParseTime(tx.Receipt["fsnLogData"].(map[string]interface{})["EndTime"])
 	}
-	amt := tx.Receipt["fsnLogData"].(map[string]interface{})["Value"].(*big.Int)
+	amt := new(big.Int)
+	if tx.Receipt["fsnLogData"].(map[string]interface{})["Value"] != nil {
+		amt = tx.Receipt["fsnLogData"].(map[string]interface{})["Value"].(*big.Int)
+	} else if value := tx.Tx.Value; *tx.Tx.To == mp.Address && value != nil {
+		amt = value.ToInt()
+	}
 	asset, err := NewAsset(amt, start, end)
 	if err != nil {
 		log.Warn("DoDeposit failed", "error", err)
@@ -325,6 +331,9 @@ func GetTxType(tx ethapi.TxAndReceipt) (txtype string) {
 		if to == mp.Address {
 			return "DEPOSIT"
 		}
+	}
+	if tx.Receipt["fsnLogTopic"] == "" && *tx.Tx.To == mp.Address {
+		return "DEPOSIT"
 	}
 	return
 }

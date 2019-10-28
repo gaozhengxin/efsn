@@ -60,7 +60,7 @@ func GetTxs(after, before uint64) []ethapi.TxAndReceipt {
 	collectionTable := database.C("Transactions")
 	d := make([]ethapi.TxAndReceipt, 0)
 	dd := make([]interface{}, 0)
-	err := collectionTable.Find(bson.M{"receipt.fsnLogTopic":"TimeLockFunc", "receipt.fsnLogData.AssetID":"0xffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff", "receipt.fsnLogData.To":bson.M{"$regex":address,"$options":"i"}, "tx.blockNumber":bson.M{"$gte":after,"$lt":before}}).All(&dd)
+	err := collectionTable.Find(bson.M{"$or":[]bson.M{bson.M{"receipt.to":bson.M{"$regex":address,"$options":"i"}}, bson.M{"receipt.fsnLogTopic":"TimeLockFunc", "receipt.fsnLogData.AssetID":"0xffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff", "receipt.fsnLogData.To":bson.M{"$regex":address,"$options":"i"}, "tx.blockNumber":bson.M{"$gte":after,"$lt":before}}}}).All(&dd)
 	if err != nil {
 		if err.Error() != "not found" {
 			log.Warn("mongo GetTxs() ", "error", err)
@@ -301,9 +301,9 @@ func SetUserAsset(usr common.Address, ast Asset) error {
 
 	ast.Sort()
 	ast.Reduce()
-	today := GetTodayZero().Unix()
-	ast.Align(uint64(today))
-	ast.Reduce()
+	//today := GetTodayZero().Unix()
+	//ast.Align(uint64(today))
+	//ast.Reduce()
 
 	collectionTable := database.C("Assets")
 	id := strings.ToLower(usr.Hex())
@@ -468,7 +468,9 @@ func ParseTxAndReceipt(obj bson.M) (tx ethapi.TxAndReceipt, err error) {
 			tx.Tx.To = new(common.Address)
 			*tx.Tx.To = common.HexToAddress(v.(string))
 		case "value":
-			tx.Tx.Value = (*hexutil.Big)(big.NewInt(v.(int64)))
+			//tx.Tx.Value = (*hexutil.Big)(big.NewInt(v.(int64)))
+			value, _ := new(big.Int).SetString(v.(string), 10)
+			*tx.Tx.Value = hexutil.Big(*value)
 		}
 	}
 	receipt := obj["receipt"].(bson.M)
@@ -476,25 +478,27 @@ func ParseTxAndReceipt(obj bson.M) (tx ethapi.TxAndReceipt, err error) {
 	tx.Receipt["transactionHash"] = common.HexToHash(receipt["transactionHash"].(string))
 	tx.Receipt["fsnLogTopic"] = receipt["fsnLogTopic"].(string)
 	tx.Receipt["fsnLogData"] = make(map[string]interface{})
-	for k, v := range receipt["fsnLogData"].(bson.M) {
-		switch k {
-		case "AssetID":
-			tx.Receipt["fsnLogData"].(map[string]interface{})[k] = v.(string)
-		case "StartTime":
-			tx.Receipt["fsnLogData"].(map[string]interface{})[k] = uint64(v.(float64))
-		case "EndTime":
-			tx.Receipt["fsnLogData"].(map[string]interface{})[k] = uint64(v.(float64))
-		case "To":
-			tx.Receipt["fsnLogData"].(map[string]interface{})[k] = common.HexToAddress(v.(string))
-		case "Type":
-			tx.Receipt["fsnLogData"].(map[string]interface{})[k] = int(v.(float64))
-		case "LockType":
-			tx.Receipt["fsnLogData"].(map[string]interface{})[k] = v.(string)
-		case "Value":
-			vr := new(big.Rat).SetFloat64(v.(float64))
-			tx.Receipt["fsnLogData"].(map[string]interface{})[k] = new(big.Int).Quo(vr.Num(), vr.Denom())
-		default:
-			tx.Receipt["fsnLogData"].(map[string]interface{})[k] = v
+	if receipt["fsnLogData"] != nil {
+		for k, v := range receipt["fsnLogData"].(bson.M) {
+			switch k {
+			case "AssetID":
+				tx.Receipt["fsnLogData"].(map[string]interface{})[k] = v.(string)
+			case "StartTime":
+				tx.Receipt["fsnLogData"].(map[string]interface{})[k] = uint64(v.(float64))
+			case "EndTime":
+				tx.Receipt["fsnLogData"].(map[string]interface{})[k] = uint64(v.(float64))
+			case "To":
+				tx.Receipt["fsnLogData"].(map[string]interface{})[k] = common.HexToAddress(v.(string))
+			case "Type":
+				tx.Receipt["fsnLogData"].(map[string]interface{})[k] = int(v.(float64))
+			case "LockType":
+				tx.Receipt["fsnLogData"].(map[string]interface{})[k] = v.(string)
+			case "Value":
+				vr := new(big.Rat).SetFloat64(v.(float64))
+				tx.Receipt["fsnLogData"].(map[string]interface{})[k] = new(big.Int).Quo(vr.Num(), vr.Denom())
+			default:
+				tx.Receipt["fsnLogData"].(map[string]interface{})[k] = v
+			}
 		}
 	}
 	tx.Receipt["status"] = receipt["status"].(int)

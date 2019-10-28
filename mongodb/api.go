@@ -395,12 +395,19 @@ func AddTxs(table string, mtxs ...mgoTx) {
 		docs = append(docs, mtx)
 	}
 	err := collectionTable.Insert(docs...)
+	hs := ""
+	if l := len(mtxs); l > 0 {
+		hs = mtxs[0].Hash
+		for i := 1; i < l; i++ {
+			hs = hs + ", " + mtxs[i].Hash
+		}
+	}
 	if err == nil {
 		//logPrintAll("==== AddTx() ====", "Insert success: mgoTx hash", mtx.Hash)
-		logPrintAll("==== AddTx() ====", "Insert success: ", len(mtxs))
+		logPrintAll("==== AddTx() ====", "Insert success: ", hs)
 	} else {
 		//logPrintAll("==== AddTx() ====", "Insert failed: mgoTx hash", mtx.Hash, "error", err)
-		logPrintAll("==== AddTx() ====", "Insert failed: ", len(mtxs), "error", err)
+		logPrintAll("==== AddTx() ====", "Insert failed: ", hs, "error", err)
 	}
 }
 

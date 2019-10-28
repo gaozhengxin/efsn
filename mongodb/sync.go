@@ -1144,7 +1144,7 @@ func ParseTx(tx *ethapi.TxAndReceipt) (mtx *mgoTx, err error) {
 		TransactionIndex: uint64(tx.Tx.TransactionIndex),
 		From: tx.Tx.From.Hex(),
 		To: tx.Tx.To.Hex(),
-		Value: uint64(tx.Tx.Value.ToInt().Int64()),
+		Value: tx.Tx.Value.ToInt().String(),
 		Gas: uint64(tx.Tx.Gas),
 		GasPrice: tx.Tx.GasPrice.String(),
 	}
@@ -1157,7 +1157,7 @@ func ParseTx(tx *ethapi.TxAndReceipt) (mtx *mgoTx, err error) {
 	mtx.TransactionIndex = uint64(tx.Tx.TransactionIndex)
 	mtx.From = mtx.Tx.From
 	mtx.To = mtx.Tx.To
-	mtx.Value = float64(mtx.Tx.Value)
+	mtx.Value = mtx.Tx.Value
 	mtx.GasLimit = uint64(tx.Tx.Gas)
 	mtx.GasPrice = mtx.Tx.GasPrice
 	mtx.GasUsed = mtx.Receipt.GasUsed
