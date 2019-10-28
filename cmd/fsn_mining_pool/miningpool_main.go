@@ -178,7 +178,7 @@ func DoWithdraw(m WithdrawMsg) {
 	}
 	log.Info("DoWithdraw send asset to user")
 	fp := GetFundPool()
-	hs, err := fp.SendAsset(m.Address, ast)
+	hs, err := fp.SendAsset(m.Address, m.Asset)
 	ret := &WithdrawRet{
 		Hs: hs,
 		Id: m.Id,

@@ -20,7 +20,7 @@ func ValidateWithdraw(r *withdraw.WithdrawRequest) error {
 		if uint64(now) - ts > 300 {
 			return fmt.Errorf("timestamp is too old")
 		}
-		if ts - uint64(now) > 60 {
+		if ts > 60 + uint64(now) {
 			return fmt.Errorf("timestamp is too ahead of time")
 		}
 	} else {

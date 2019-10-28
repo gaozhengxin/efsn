@@ -23,7 +23,11 @@ func (r *WithdrawRequest) MakeHash() common.Hash {
 	cr := &WithdrawRequest{
 		Address: r.Address,
 		Amount: r.Amount,
-		Timestamp: fmt.Sprintf("%v", time.Now().Unix()),
+	}
+	if r.Timestamp != "" {
+		cr.Timestamp = r.Timestamp
+	} else {
+		cr.Timestamp = fmt.Sprintf("%v", time.Now().Unix())
 	}
 	b, err := json.Marshal(cr)
 	if err != nil {
