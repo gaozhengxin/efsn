@@ -14,11 +14,13 @@ import (
 
 var (
 	address string
+	amount string
 	pk string
 )
 
 func init() {
 	flag.StringVar(&address, "a", "", "address hex string")
+	flag.StringVar(&amount, "amount", "", "withdraw amount")
 	flag.StringVar(&pk, "k", "", "private key hex string")
 }
 
@@ -27,7 +29,7 @@ func main() {
 	pk = strings.TrimPrefix(pk, "0x")
 	req := &w.WithdrawRequest{
 		Address:address,
-		Amount:"100",
+		Amount:amount,
 		Timestamp:fmt.Sprintf("%v", time.Now().Unix()),
 	}
 	req.MakeHash()
