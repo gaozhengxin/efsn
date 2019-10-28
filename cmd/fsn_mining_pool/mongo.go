@@ -60,7 +60,7 @@ func GetTxs(after, before uint64) []ethapi.TxAndReceipt {
 	collectionTable := database.C("Transactions")
 	d := make([]ethapi.TxAndReceipt, 0)
 	dd := make([]interface{}, 0)
-	err := collectionTable.Find(bson.M{"$or":[]bson.M{bson.M{"receipt.to":bson.M{"$regex":address,"$options":"i"}}, bson.M{"receipt.fsnLogTopic":"TimeLockFunc", "receipt.fsnLogData.AssetID":"0xffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff", "receipt.fsnLogData.To":bson.M{"$regex":address,"$options":"i"}, "tx.blockNumber":bson.M{"$gte":after,"$lt":before}}}}).All(&dd)
+	err := collectionTable.Find(bson.M{"$or":[]bson.M{bson.M{"receipt.to":bson.M{"$regex":address,"$options":"i"}}, bson.M{"receipt.fsnLogTopic":"TimeLockFunc", "receipt.fsnLogData.AssetID":"0xffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff", "receipt.fsnLogData.To":bson.M{"$regex":address,"$options":"i"}}}, "tx.blockNumber":bson.M{"$gte":after,"$lt":before}}).All(&dd)
 	if err != nil {
 		if err.Error() != "not found" {
 			log.Warn("mongo GetTxs() ", "error", err)
@@ -470,7 +470,10 @@ func ParseTxAndReceipt(obj bson.M) (tx ethapi.TxAndReceipt, err error) {
 		case "value":
 			//tx.Tx.Value = (*hexutil.Big)(big.NewInt(v.(int64)))
 			value, _ := new(big.Int).SetString(v.(string), 10)
-			*tx.Tx.Value = hexutil.Big(*value)
+			if value != nil {
+				tx.Tx.Value = new(hexutil.Big)
+				*tx.Tx.Value = hexutil.Big(*value)
+			}
 		}
 	}
 	receipt := obj["receipt"].(bson.M)

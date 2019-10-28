@@ -79,7 +79,7 @@ func runApp() {
 
 var (
 	url string = "http://0.0.0.0:8554"
-	InitialBlock uint64 = 10
+	InitialBlock uint64 = 1
 	//InitialBlock uint64 = 200000
 	FeeRate = big.NewRat(1,10)  // 0.1
 )
