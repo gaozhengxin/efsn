@@ -6,22 +6,24 @@ import (
 	"encoding/json"
 	"fmt"
 	"math/big"
+	"time"
 	"github.com/FusionFoundation/efsn/common"
 	"github.com/FusionFoundation/efsn/crypto"
 )
 
 type WithdrawRequest struct {
-	Hash    string `json:"hash,omitempty"`
-	Address string `json:"address"`
-	Amount  string `json:"amount"`
-	//Timestamp uint64 `json:"timestamp"` ???
-	Sig     string `json:"sig,omitempty"`
+	Hash      string `json:"hash,omitempty"`
+	Address   string `json:"address"`
+	Amount    string `json:"amount"`
+	Timestamp string `json:"timestamp"`
+	Sig       string `json:"sig,omitempty"`
 }
 
 func (r *WithdrawRequest) MakeHash() common.Hash {
 	cr := &WithdrawRequest{
 		Address: r.Address,
 		Amount: r.Amount,
+		Timestamp: fmt.Sprintf("%v", time.Now().Unix()),
 	}
 	b, err := json.Marshal(cr)
 	if err != nil {

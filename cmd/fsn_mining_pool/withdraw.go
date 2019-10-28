@@ -3,6 +3,8 @@ package main
 import (
 	"fmt"
 	"math/big"
+	"strconv"
+	"time"
 	"github.com/FusionFoundation/efsn/cmd/fsn_mining_pool/withdraw"
 	"github.com/FusionFoundation/efsn/common"
 	"github.com/FusionFoundation/efsn/log"
@@ -12,6 +14,17 @@ func ValidateWithdraw(r *withdraw.WithdrawRequest) error {
 	log.Info("start ValidateWithdraw()", "request", r)
 	if common.HexToHash(r.Hash) != r.MakeHash() {
 		return fmt.Errorf("withdraw request hash error")
+	}
+	if ts, err := strconv.ParseUint(r.Timestamp, 10, 64); err == nil {
+		now := time.Now().Unix()
+		if uint64(now) - ts > 300 {
+			return fmt.Errorf("timestamp is too old")
+		}
+		if ts - uint64(now) > 60 {
+			return fmt.Errorf("timestamp is too ahead of time")
+		}
+	} else {
+		return fmt.Errorf("invalid timestamp")
 	}
 	if r.VerifySignature() {
 		log.Debug("signature verify passed")
