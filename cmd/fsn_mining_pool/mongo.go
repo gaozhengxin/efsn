@@ -405,6 +405,8 @@ func AddTotalProfit(p0, p1 uint64, tp *big.Int) error {
 	d := make([]bson.M, 1)
 	err := collectionTable.Find(bson.M{"_id":fmt.Sprintf("%v-%v", p0,p1)}).One(&d[0])
 	if err != nil {
+		d[0] = bson.M{"_id":fmt.Sprintf("%v-%v", p0,p1), "total":tp.String()}
+		err = collectionTable.Insert(d[0])
 		return err
 	}
 	d[0]["total"] = tp.String()
@@ -418,6 +420,8 @@ func AddProfit(p0, p1 uint64, m map[string]string) error {
 	d := make([]bson.M, 1)
 	err := collectionTable.Find(bson.M{"_id":fmt.Sprintf("%v-%v", p0,p1)}).One(&d[0])
 	if err != nil {
+		d[0] = bson.M{"_id":fmt.Sprintf("%v-%v", p0,p1), "map":m}
+		err = collectionTable.Insert(d[0])
 		return err
 	}
 	d[0]["map"] = m

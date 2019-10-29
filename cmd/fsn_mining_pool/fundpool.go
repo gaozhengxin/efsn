@@ -68,7 +68,7 @@ func (fp *FundPool) GetTotalOut(after, before uint64) (total *Asset, err error) 
 
 func (fp *FundPool) PayProfits(profits []Profit) (map[string]string, []Profit) {
 	log.Debug("fund pool PayProfits()", "profits", profits)
-	var m map[string]string
+	var m map[string]string = make(map[string]string)
 	var detained []Profit
 	for _, p := range profits {
 		log.Debug("fund pool send profit", "profit", p)
