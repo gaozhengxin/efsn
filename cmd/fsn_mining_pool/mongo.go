@@ -386,7 +386,7 @@ func AddDeposit(txhash common.Hash, user common.Address, ast *Asset) error {
 	log.Debug("mongo AddWithdraw()")
 	collectionTable := database.C("Deposit")
 	mgoast := ConvertAsset(*ast)
-	d := bson.M{"txhash":txhash.Hex(), "user":user, "asset":mgoast}
+	d := bson.M{"txhash":txhash.Hex(), "user":user.Hex(), "asset":mgoast}
 	err := collectionTable.Insert(d)
 	return err
 }
