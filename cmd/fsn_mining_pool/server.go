@@ -9,7 +9,7 @@ import (
 	"github.com/FusionFoundation/efsn/log"
 )
 
-var port = "9990"
+var port string
 
 func ServerRun() {
 	http.HandleFunc("/", Withdraw)

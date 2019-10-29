@@ -34,23 +34,31 @@ func InitMongo() {
 	}
 	InitOnce = true
 	url := fmt.Sprintf("mongodb://%v", MongoIP) //url := "localhost"
-	//url := "192.168.1.127:27017"
 	fmt.Printf("mongodb url %v\n", url)
-	for {
-		session, err := mgo.Dial(url)
-		if err != nil {
-			log.Warn("mgo.Dial", "url", url, "fail", err)
-			time.Sleep(time.Duration(1) * time.Second)
-			continue
-		}
-		Session = session
-		break
+	f := &NewMgoSession{url:url}
+	session, err := Try(3, f, nil)
+	if err != nil {
+		log.Error("cannot create mongo session")
+		return
 	}
+	Session = session.(*mgo.Session)
 	Session.SetMode(mgo.Monotonic, true)
 	Session.SetSocketTimeout(1 * time.Hour)
 	database = Session.DB(dbname)
 	fmt.Printf("mongodb mongoServerInit finished.\n")
 	InitOnce = false
+}
+
+type NewMgoSession struct {
+	url string
+}
+
+func (f *NewMgoSession) Do (params ...interface{}) (interface{}, error) {
+	return mgo.Dial(f.url)
+}
+
+func (f *NewMgoSession) Panic (err error) {
+	log.Warn("mgo.Dial", "url", f.url, "fail", err)
 }
 
 func GetTxs(after, before uint64) []ethapi.TxAndReceipt {

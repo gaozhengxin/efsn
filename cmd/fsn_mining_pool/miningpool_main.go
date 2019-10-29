@@ -14,16 +14,24 @@ import (
 )
 
 func initCmd() {
+	rootCmd.PersistentFlags().StringVar(&node, "node", "http://0.0.0.0:8554", "efsn node rpc address")
+	rootCmd.PersistentFlags().StringVar(&MongoIP, "mongo", "localhost", "mongoDB address")
+	rootCmd.PersistentFlags().StringVar(&port, "port", "9990", "withdraw port")
+	rootCmd.PersistentFlags().Uint64Var(&InitialBlock, "initialblock", uint64(1), "initial block number")
+	rootCmd.PersistentFlags().Int64Var(&FeePercentage, "feepercentage", int64(10), "fee percentage")
 	rootCmd.PersistentFlags().StringVar(&mpkeyfile, "mkey", "", "mining pool keyfile path")
 	rootCmd.PersistentFlags().StringVar(&mppassphrase, "mpasswd", "", "mining pool keyfile password")
 	rootCmd.PersistentFlags().StringVar(&fpkeyfile, "fkey", "", "fund pool keyfile path")
 	rootCmd.PersistentFlags().StringVar(&fppassphrase, "fpasswd", "", "fund pool keyfile password")
+	rootCmd.PersistentFlags().BoolVar(&mainnet, "main", true, "main net")
+	rootCmd.PersistentFlags().BoolVar(&test, "test", false, "test net")
+	rootCmd.PersistentFlags().BoolVar(&dev, "dev", false, "private chain")
+	rootCmd.PersistentFlags().IntVar(&verbose, "verbose", 3, "log verbose")
 }
 
 func initApp() {
 	initCmd()
 	log.Root().SetHandler(log.LvlFilterHandler(log.LvlDebug, log.StreamHandler(os.Stderr, log.TerminalFormat(true))))
-	InitMongo()
 }
 
 var (
@@ -31,7 +39,18 @@ var (
 	mppassphrase string
 	fpkeyfile string
 	fppassphrase string
+
+	node string
+	InitialBlock uint64
+	FeePercentage int64
+	FeeRate *big.Rat
+
+	ChainID int64
+	mainnet,test,dev bool
+
+	verbose int
 )
+
 
 var rootCmd = &cobra.Command{
 	Run: func(cmd *cobra.Command, args []string) {
@@ -47,6 +66,36 @@ func main() {
 }
 
 func runApp() {
+	if verbose > 5 {
+		verbose = 5
+	}
+	log.Root().SetHandler(log.LvlFilterHandler(log.Lvl(verbose), log.StreamHandler(os.Stderr, log.TerminalFormat(true))))
+
+	if FeePercentage > 100 {
+		log.Error("fee percentage cannot be larger than 100")
+	}
+	FeeRate = big.NewRat(FeePercentage, 100)
+
+	c := GetRPCClient()
+	if c == nil {
+		log.Warn("cannot conncet to efsn node")
+	}
+
+	InitMongo()
+	if Session == nil {
+		return
+	}
+
+	if dev {
+		ChainID = int64(55555)
+	} else if test {
+		ChainID = int64(46688)
+	} else if mainnet {
+		ChainID = int64(32659)
+	} else {
+		log.Error("unknown evironment")
+	}
+
 	keyjson1, err1 := ioutil.ReadFile(mpkeyfile)
 	if err1 != nil {
 		log.Error("read mining pool key file failed", "error", err1)
@@ -70,19 +119,12 @@ func runApp() {
 
 	mp := GetMiningPool()
 	fp := GetFundPool()
-	log.Info("app is prepared", "mining pool", mp.Address.Hex(), "fund pool", fp.Address.Hex())
+	log.Info("app is prepared", "mining pool", mp.Address.Hex(), "fund pool", fp.Address.Hex(), "fee rate", FeeRate.FloatString(2), "start at block number", InitialBlock, "connecting efsn node", node, "listening withdraw message", port, "chain id", ChainID, "log verbose", log.Lvl(verbose))
 
-	go ServerRun()
-	go Run()
-	select{}
+	//go ServerRun()
+	//go Run()
+	//select{}
 }
-
-var (
-	url string = "http://0.0.0.0:8554"
-	InitialBlock uint64 = 1
-	//InitialBlock uint64 = 200000
-	FeeRate = big.NewRat(1,10)  // 0.1
-)
 
 type UserAssetMap map[common.Address]*Asset
 

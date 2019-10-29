@@ -29,7 +29,7 @@ func GetTodayZero() time.Time {
 
 func GetRPCClient() *ethclient.Client {
 	f := &NewRPCClient{}
-	ret, err := Try(3, f, url)
+	ret, err := Try(3, f, node)
 	if err != nil {
 		log.Warn("get rpc client failed")
 		return nil
@@ -39,21 +39,18 @@ func GetRPCClient() *ethclient.Client {
 }
 
 type Func interface {
-	Name() string
 	Do(...interface{}) (interface{}, error)
 	Panic(error)
 }
 
 type NewRPCClient struct {}
 
-func (f *NewRPCClient) Name() string {return "create rpc client getBalance"}
-
 func (f *NewRPCClient) Do (params ...interface{}) (interface{}, error) {
 	return ethclient.Dial(params[0].(string))
 }
 
 func (f *NewRPCClient) Panic (err error) {
-	log.Debug("create rpc client getBalance failed", "error", err)
+	log.Debug("create rpc client failed", "error", err)
 }
 
 func Try(trytimes int, f Func, params interface{}) (ret interface{}, err error) {
@@ -65,7 +62,7 @@ func Try(trytimes int, f Func, params interface{}) (ret interface{}, err error) 
 	for i := 1; i <= trytimes; i++ {
 		ret, err = f.Do(params)
 		if err != nil {
-			log.Debug("Try " + f.Name() + "failed", "try time", i)
+			log.Debug("Try " + fmt.Sprintf("%T", f) + " failed", "try time", i)
 			f.Panic(err)
 		} else {
 			break
@@ -73,15 +70,13 @@ func Try(trytimes int, f Func, params interface{}) (ret interface{}, err error) 
 		time.Sleep(time.Second * 5)
 	}
 	if err != nil {
-		return nil, fmt.Errorf("Do " + f.Name() + "failed")
+		return nil, fmt.Errorf("Do " + fmt.Sprintf("%T", f) + " failed")
 	}
 	return ret, nil
 }
 
 type CheckTx struct {
 }
-
-func (f *CheckTx) Name() string {return "check tx"}
 
 func (f *CheckTx) Do(params ...interface{}) (interface{}, error) {
 	hash := params[0].(common.Hash)
@@ -145,9 +140,7 @@ func sendAsset(from, to common.Address, asset *Asset, priv *ecdsa.PrivateKey) ([
 		return nil, fmt.Errorf("cannot get chain id in SendFSN", "error", err)
 	}*/
 
-	//chainID := big.NewInt(32659)
-	//chainID := big.NewInt(46688)
-	chainID := big.NewInt(55555)
+	chainID := big.NewInt(ChainID)
 
 	gasLimit := uint64(80000)
 	gasPrice := big.NewInt(1000000000)
