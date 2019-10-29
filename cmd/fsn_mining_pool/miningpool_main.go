@@ -402,6 +402,7 @@ func Run() {
 				for before < InitialBlock || before <= after {
 					log.Debug("cannot find new transactions in mongodb")
 					time.Sleep(time.Second * 5)
+					before = GetSyncHead()
 				}
 				// get txs from mongodb
 				txs := GetTxs(after, before)
