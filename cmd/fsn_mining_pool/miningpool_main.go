@@ -121,9 +121,9 @@ func runApp() {
 	fp := GetFundPool()
 	log.Info("app is prepared", "mining pool", mp.Address.Hex(), "fund pool", fp.Address.Hex(), "fee rate", FeeRate.FloatString(2), "start at block number", InitialBlock, "connecting efsn node", node, "listening withdraw message", port, "chain id", ChainID, "log verbose", log.Lvl(verbose))
 
-	//go ServerRun()
-	//go Run()
-	//select{}
+	go ServerRun()
+	go Run()
+	select{}
 }
 
 type UserAssetMap map[common.Address]*Asset
