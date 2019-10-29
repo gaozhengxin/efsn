@@ -399,6 +399,32 @@ func AddDetainedProfit(p Profit) error {
 	return err
 }
 
+func AddTotalProfit(p0, p1 uint64, tp *big.Int) error {
+	log.Debug("mongo AddTotalProfit()", "p0", p0, "p1", p1, "total profit", tp)
+	collectionTable := database.C("Profits")
+	d := make([]bson.M, 1)
+	err := collectionTable.Find(bson.M{"_id":fmt.Sprintf("%v-%v", p0,p1)}).One(&d[0])
+	if err != nil {
+		return err
+	}
+	d[0]["total"] = tp.String()
+	_, err = collectionTable.Upsert(bson.M{"_id":fmt.Sprintf("%v-%v", p0,p1)}, d[0])
+	return err
+}
+
+func AddProfit(p0, p1 uint64, m map[string]string) error {
+	log.Debug("mongo AddTotalProfit()", "p0", p0, "p1", p1, "m", m)
+	collectionTable := database.C("Profits")
+	d := make([]bson.M, 1)
+	err := collectionTable.Find(bson.M{"_id":fmt.Sprintf("%v-%v", p0,p1)}).One(&d[0])
+	if err != nil {
+		return err
+	}
+	d[0]["map"] = m
+	_, err = collectionTable.Upsert(bson.M{"_id":fmt.Sprintf("%v-%v", p0,p1)}, d[0])
+	return err
+}
+
 type MgoProfit struct {
 	Address string `bson:"address"`
 	Amount string `bson:"amount"`

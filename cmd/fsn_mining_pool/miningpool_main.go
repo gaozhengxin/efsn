@@ -275,6 +275,9 @@ func SettleAccounts() error {
 	// 1. calc mining pool profit
 	mp.CalcProfit(p0, p1)
 	totalProfit := mp.Profit
+	if err := AddTotalProfit(p0, p1, totalProfit); err != nil {
+		log.Warn("write total profit to mongo failed", "error", err)
+	}
 
 	// 2. get fp out, replenish fp
 	ast, err := NewAsset(totalProfit, 0, 0)
@@ -302,13 +305,8 @@ func SettleAccounts() error {
 	userProfits := CalculateUserProfits(totalProfit, uam)
 
 	hs, detained := fp.PayProfits(userProfits)
-	hashes := ""
-	if len(hs) > 0 {
-		for _, h := range hs {
-			hashes = hashes + "  " + h.Hex()
-		}
-	}
-	log.Debug(fmt.Sprintf("fund pool has commited %v transactions", len(hs)), "hashes", hashes)
+	AddProfit(p0, p1, hs)
+	log.Debug(fmt.Sprintf("fund pool has commited %v transactions", len(hs)), "hashes", fmt.Sprintf("%+v", hs))
 	for _, dp := range detained {
 		err := AddDetainedProfit(dp)
 		if err != nil {

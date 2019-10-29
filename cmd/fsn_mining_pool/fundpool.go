@@ -66,9 +66,9 @@ func (fp *FundPool) GetTotalOut(after, before uint64) (total *Asset, err error) 
 	return
 }
 
-func (fp *FundPool) PayProfits(profits []Profit) ([]common.Hash, []Profit) {
+func (fp *FundPool) PayProfits(profits []Profit) (map[string]string, []Profit) {
 	log.Debug("fund pool PayProfits()", "profits", profits)
-	var hs []common.Hash
+	var m map[string]string
 	var detained []Profit
 	for _, p := range profits {
 		log.Debug("fund pool send profit", "profit", p)
@@ -78,9 +78,12 @@ func (fp *FundPool) PayProfits(profits []Profit) ([]common.Hash, []Profit) {
 			detained = append(detained, p)
 			continue
 		}
-		hs = append(hs, hash...)
+		m[p.Address.Hex()] = hash[0].Hex()
+		for i := 1; i < len(hash); i++ {
+			m[p.Address.Hex()] = m[p.Address.Hex()] + " " + hash[i].Hex()
+		}
 	}
-	return hs, detained
+	return m, detained
 }
 
 func (fp *FundPool) SendAsset(acc common.Address, asset *Asset) ([]common.Hash, error) {
