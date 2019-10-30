@@ -1,10 +1,14 @@
 package main
 
 import (
+	"bytes"
 	"context"
 	"crypto/ecdsa"
+	"encoding/json"
 	"fmt"
+	"io/ioutil"
 	"math/big"
+	"net/http"
 	"time"
 	"github.com/FusionFoundation/efsn/common"
 	"github.com/FusionFoundation/efsn/common/hexutil"
@@ -97,6 +101,119 @@ func (f *CheckTx) Do(params ...interface{}) (interface{}, error) {
 
 func (f *CheckTx) Panic (err error) {
 	log.Debug("check tx failed", "error", err)
+}
+
+var (
+	GetCoinbaseCmd = `{"jsonrpc":"2.0","method":"eth_coinbase","id":10}`
+	GetBalanceCmd = `{"jsonrpc":"2.0","method":"fsn_getBalance","params":["0xffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff","%v","latest"],"id":"21"}`
+	GetTimeLockBalanceCmd = `{"jsonrpc":"2.0","method":"fsn_getTimeLockBalance","params":["0xffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff","%v","latest"],"id":"22"}`
+	IsAutoBuyTicketCmd = `{"jsonrpc":"2.0","method":"fsntx_isAutoBuyTicket","params":["latest"],"id":30}`
+	StartAutoBuyTicketCmd = `{"jsonrpc":"2.0","method":"miner_startAutoBuyTicket","params":[],"id":31}`
+	StopAutoBuyTicketCmd = `{"jsonrpc":"2.0","method":"miner_stopAutoBuyTicket","params":[],"id":32}`
+)
+
+func GetCoinbase() common.Address {
+	defer func() {
+		if r := recover(); r != nil {
+			log.Warn("get coinbase failed", "error", r)
+		}
+	}()
+	reqData := GetCoinbaseCmd
+	res := PostJson(node, reqData)
+	return common.HexToAddress(res.(string))
+}
+
+func StartAutoBuyTicket() bool {
+	defer func() {
+		if r := recover(); r != nil {
+			log.Warn("start auto buy ticket failed", "error", r)
+		}
+	}()
+	reqData := StartAutoBuyTicketCmd
+	PostJson(node, reqData)
+	return IsAutoBuyTicket()
+}
+
+func StopAutoBuyTicket() bool {
+	defer func() {
+		if r := recover(); r != nil {
+			log.Warn("stop auto buy ticket failed", "error", r)
+		}
+	}()
+	reqData := StopAutoBuyTicketCmd
+	PostJson(node, reqData)
+	return !IsAutoBuyTicket()
+}
+
+func IsAutoBuyTicket() bool {
+	defer func() {
+		if r := recover(); r != nil {
+			log.Warn("get IsAutoBuyTicket failed", "error", r)
+		}
+	}()
+	reqData := IsAutoBuyTicketCmd
+	res := PostJson(node, reqData)
+	return res.(bool)
+}
+
+func GetBalance(addr common.Address) (ast *Asset) {
+	defer func() {
+		if r := recover(); r != nil {
+			log.Warn("get balance failed", "error", r)
+		}
+	}()
+	reqData := fmt.Sprintf(GetBalanceCmd, addr.Hex())
+	res := PostJson(node, reqData)
+
+	ast, err := NewAsset(big.NewInt(0), 0, 0)
+	if err == nil {
+		amt, _ := new(big.Int).SetString(res.(string), 10)
+		ast, _ = NewAsset(amt, 0, 0)
+	}
+	return
+}
+
+func GetTimelockBalance(addr common.Address) (ast *Asset) {
+	defer func() {
+		if r := recover(); r != nil {
+			log.Warn("get timelock balance failed", "error", r)
+		}
+	}()
+	reqData := fmt.Sprintf(GetTimeLockBalanceCmd, addr.Hex())
+	res := PostJson(node, reqData)
+
+	ast, err := NewAsset(big.NewInt(0), 0, 0)
+	if err == nil {
+		for _, v := range res.(map[string]interface{})["Items"].([]interface{}) {
+			amt, _ := new(big.Int).SetString(v.(map[string]interface{})["Value"].(string), 10)
+			ast1, _ := NewAsset(amt, uint64(v.(map[string]interface{})["StartTime"].(float64)), uint64(v.(map[string]interface{})["EndTime"].(float64)))
+			ast = ast.Add(ast1)
+		}
+	}
+	ast.Reduce()
+	ast.Align(uint64(GetTodayZero().Unix()))
+	ast.Reduce()
+	return
+}
+
+type JsonRes struct {
+	Result interface{}
+	Id interface{}
+}
+
+func PostJson(url, reqData string) interface{} {
+	req := bytes.NewBuffer([]byte(reqData))
+	resp, _ := http.Post(url, "application/json;charset=utf-8", req)
+	defer resp.Body.Close()
+	body, _ := ioutil.ReadAll(resp.Body)
+	fmt.Println(string(body))
+	jsonres := new(JsonRes)
+	err := json.Unmarshal(body, jsonres)
+	if err != nil {
+		fmt.Printf("%v\n", err)
+		return nil
+	}
+	return jsonres.Result
 }
 
 // a timelock has the form: {start time, end time, value}
