@@ -52,35 +52,37 @@ func (a *Asset) Align(t uint64) {
 	if len(*a) == 0 {
 		return
 	}
-	if !a.IsSorted() {
-		a.Sort()
+	a.Reduce()
+
+	var k int = -1
+	var p Point = Point{
+		T:t,
+		V:big.NewInt(0),
 	}
-	var s int = -1
-	for i, p := range (*a) {
-		if p.T >= t {
-			s = i - 1
+
+	for i := 0; i < len(*a); i++ {
+		if (*a)[i].T >= t {
+			k = i
+			v := big.NewInt(0)
+			if i > 1 {
+				v = (*a)[i-1].V
+			}
+			p = Point{
+				T:t,
+				V:v,
+			}
 			break
 		}
 	}
-	if s >= 0 {
-		*a = (*a)[s:]
-		(*a)[0].T = t
+	ps := []Point{}
+	if k >= 0 {
+		ps = append([]Point{}, p)
+		ps = append(ps, (*a)[k:]...)
 	} else {
-		p := Point{
-			T: t,
-			V: big.NewInt(0),
-		}
-		*a = append(append([]Point{}, p), (*a)...)
+		ps = append([]Point{}, Point{T:t, V:(*a)[len(*a) - 1].V})
 	}
-	h := 0
-	for i := 0; i < len(*a); i++ {
-		if (*a)[i].V == nil || (*a)[i].V.Cmp(big.NewInt(0)) == 0 {
-			h++
-		}
-	}
-	if h >= 1 {
-		*a = (*a)[h-1:]
-	}
+	*a = ps
+	a.Reduce()
 }
 
 func (a *Asset) Reduce() {

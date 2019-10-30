@@ -307,11 +307,8 @@ func SetUserAsset(usr common.Address, ast Asset) error {
 	defer AssetsLock.Unlock()
 	log.Debug("mongo SetUserAsset()", "user", usr, "asset", ast)
 
-	ast.Sort()
-	ast.Reduce()
-	//today := GetTodayZero().Unix()
-	//ast.Align(uint64(today))
-	//ast.Reduce()
+	today := GetTodayZero().Unix()
+	ast.Align(uint64(today))
 
 	collectionTable := database.C("Assets")
 	id := strings.ToLower(usr.Hex())
