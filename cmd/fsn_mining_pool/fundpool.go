@@ -78,7 +78,7 @@ func (fp *FundPool) PayProfits(profits []Profit) (map[string]mgoProfit, []Profit
 		}
 		ast, _ := NewAsset(p.Amount, 0, 0)
 		hash, err := fp.SendAsset(p.Address, ast)
-		if err != nil && (hash == nil || len(hash) == 0) {
+		if hash == nil || len(hash) == 0 {
 			m[p.Address.Hex()]=mgoProfit{
 				Amount:p.Amount.String(),
 				Status:"failed",
@@ -86,7 +86,7 @@ func (fp *FundPool) PayProfits(profits []Profit) (map[string]mgoProfit, []Profit
 			detained = append(detained, p)
 			continue
 		}
-		if err != nil && hash != nil && len(hash) != 0 {
+		if err != nil {
 			m[p.Address.Hex()]=mgoProfit{
 				Hash:hash[0].Hex(),
 				Amount:p.Amount.String(),

@@ -341,6 +341,7 @@ func sendAsset(from, to common.Address, asset *Asset, priv *ecdsa.PrivateKey) ([
 			continue
 		}
 		hs = append(hs, h)
+		time.Sleep(time.Second * 5)
 	}
 
 	var notconfirmed []common.Hash
