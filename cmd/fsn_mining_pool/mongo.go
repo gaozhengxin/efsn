@@ -402,6 +402,12 @@ type mgoWithdrawMsg struct {
 	Id int `bson:"id"`
 }
 
+type mgoProfit struct {
+	Hash string
+	Amount string
+	Status string
+}
+
 func AddDeposit(txhash common.Hash, user common.Address, ast *Asset) error {
 	log.Debug("mongo AddWithdraw()")
 	collectionTable := database.C("Deposit")
@@ -434,7 +440,7 @@ func AddTotalProfit(p0, p1 uint64, tp *big.Int) error {
 	return err
 }
 
-func AddProfit(p0, p1 uint64, m map[string]string) error {
+func AddProfit(p0, p1 uint64, m map[string]mgoProfit) error {
 	log.Debug("mongo AddTotalProfit()", "p0", p0, "p1", p1, "m", m)
 	collectionTable := database.C("Profits")
 	d := make([]bson.M, 1)

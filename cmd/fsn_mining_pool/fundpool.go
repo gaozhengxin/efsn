@@ -66,24 +66,38 @@ func (fp *FundPool) GetTotalOut(after, before uint64) (total *Asset, err error) 
 	return
 }
 
-func (fp *FundPool) PayProfits(profits []Profit) (map[string]string, []Profit) {
+func (fp *FundPool) PayProfits(profits []Profit) (map[string]mgoProfit, []Profit) {
 	log.Debug("fund pool PayProfits()", "profits", profits)
-	var m map[string]string = make(map[string]string)
+	var m = make(map[string]mgoProfit)
 	var detained []Profit
 	for _, p := range profits {
+		m[p.Address.Hex()] = mgoProfit{Amount:p.Amount.String()}
 		log.Debug("fund pool send profit", "profit", p)
 		if p.Amount.Cmp(big.NewInt(0)) == 0 {
 			continue
 		}
 		ast, _ := NewAsset(p.Amount, 0, 0)
 		hash, err := fp.SendAsset(p.Address, ast)
-		if err != nil || hash == nil || len(hash) == 0 {
+		if err != nil && (hash == nil || len(hash) == 0) {
+			m[p.Address.Hex()]=mgoProfit{
+				Amount:p.Amount.String(),
+				Status:"failed",
+			}
 			detained = append(detained, p)
 			continue
 		}
-		m[p.Address.Hex()] = hash[0].Hex()
-		for i := 1; i < len(hash); i++ {
-			m[p.Address.Hex()] = m[p.Address.Hex()] + " " + hash[i].Hex()
+		if err != nil && hash != nil && len(hash) != 0 {
+			m[p.Address.Hex()]=mgoProfit{
+				Hash:hash[0].Hex(),
+				Amount:p.Amount.String(),
+				Status:"unconfirmed",
+			}
+			continue
+		}
+		m[p.Address.Hex()]=mgoProfit{
+			Hash:hash[0].Hex(),
+			Amount:p.Amount.String(),
+			Status:"success",
 		}
 	}
 	return m, detained
