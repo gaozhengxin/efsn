@@ -64,7 +64,7 @@ func (a *Asset) Align(t uint64) {
 		if (*a)[i].T >= t {
 			k = i
 			v := big.NewInt(0)
-			if i > 1 {
+			if i > 0 {
 				v = (*a)[i-1].V
 			}
 			p = Point{
