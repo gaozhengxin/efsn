@@ -461,6 +461,17 @@ type MgoProfit struct {
 	Time int64 `bson:"time"`
 }
 
+func AddMiningPoolToFundPool(hashes []common.Hash, asset *Asset) error {
+	log.Debug("mongo AddMiningPoolToFundPool()", "hash", hashes, "asset", asset)
+	collectionTable := database.C("MiningPoolToFundPool")
+	hs := make([]string,0)
+	for _, h := range hashes {
+		hs = append(hs, h.Hex())
+	}
+	err := collectionTable.Insert(bson.M{"hashes":hs,"asset":*asset,"time":time.Now().Unix()})
+	return err
+}
+
 func ParseProfit(p Profit) MgoProfit {
 	return MgoProfit{
 		Address:p.Address.Hex(),

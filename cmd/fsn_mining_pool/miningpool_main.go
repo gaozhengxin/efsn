@@ -277,7 +277,8 @@ func DoWithdraw(m WithdrawMsg) {
 			mpbal := GetTimelockBalance(mp.Address)
 			if mpbal != nil {
 				if mpbal.Sub(m.Asset).IsNonneg() {
-					mp.SendAsset(fp.Address, m.Asset)
+					hs0, _ := mp.SendAsset(fp.Address, m.Asset)
+					AddMiningPoolToFundPool(hs0, m.Asset)
 					hs, err := fp.SendAsset(m.Address, m.Asset) // timelock to timelock
 					if err != nil || hs == nil || len(hs) == 0 {
 						log.Warn("DoWithdraw send asset failed", "error", err)
@@ -375,7 +376,8 @@ func SettleAccounts() error {
 	ast, err := NewAsset(totalProfit, 0, 0)
 	if ast != nil && err == nil {
 		log.Info(fmt.Sprintf("mining pool profit is %v", ast))
-		_, err := mp.SendAsset(fp.Address, ast)
+		hs, err := mp.SendAsset(fp.Address, ast)
+		AddMiningPoolToFundPool(hs, ast)
 		if err != nil {
 			log.Warn("Replenish fund pool reported error", "error", err)
 		}
@@ -433,6 +435,7 @@ func SettleAccounts() error {
 			if mpbal != nil {
 				if mpbal.Sub(refund).IsNonneg() == true {
 					hs, err := mp.SendAsset(fp.Address, refund)
+					AddMiningPoolToFundPool(hs, refund)
 					if err != nil {
 						log.Warn("send timelock to fund pool failed", "error", err)
 						return fmt.Errorf("replenish fund pool failed, %v", err)
