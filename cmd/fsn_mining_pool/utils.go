@@ -131,6 +131,7 @@ func StartAutoBuyTicket() bool {
 			log.Warn("start auto buy ticket failed", "error", r)
 		}
 	}()
+	log.Info("start auto buy ticket")
 	reqData := StartAutoBuyTicketCmd
 	PostJson(node, reqData)
 	return IsAutoBuyTicket()
@@ -142,6 +143,7 @@ func StopAutoBuyTicket() bool {
 			log.Warn("stop auto buy ticket failed", "error", r)
 		}
 	}()
+	log.Info("stop auto buy ticket")
 	reqData := StopAutoBuyTicketCmd
 	PostJson(node, reqData)
 	return !IsAutoBuyTicket()
@@ -155,6 +157,7 @@ func MustStartMining() bool {
 			return false
 		}
 	}
+	log.Info("node is mining")
 	return true
 }
 
@@ -195,6 +198,7 @@ func GetBalance(addr common.Address) (ast *Asset) {
 		amt, _ := new(big.Int).SetString(res.(string), 10)
 		ast, _ = NewAsset(amt, 0, 0)
 	}
+	log.Debug(fmt.Sprintf("get account balance %v : %+v \r", addr.Hex(), ast))
 	return
 }
 
@@ -218,6 +222,7 @@ func GetTimelockBalance(addr common.Address) (ast *Asset) {
 	ast.Reduce()
 	ast.Align(uint64(GetTodayZero().Unix()))
 	ast.Reduce()
+	log.Debug(fmt.Sprintf("get account timelock balance %v : %+v \r", addr.Hex(), ast))
 	return
 }
 
