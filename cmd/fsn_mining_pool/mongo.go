@@ -303,12 +303,13 @@ func GetAllAssets() (uam *UserAssetMap) {
 }
 
 func SetUserAsset(usr common.Address, ast Asset) error {
+	log.Debug("mongo SetUserAsset()")
 	AssetsLock.Lock()
 	defer AssetsLock.Unlock()
-	log.Debug("mongo SetUserAsset()", "user", usr, "asset", ast)
 
 	today := GetTodayZero().Unix()
 	ast.Align(uint64(today))
+	log.Debug("", "user", usr, "asset", ast)
 
 	collectionTable := database.C("Assets")
 	id := strings.ToLower(usr.Hex())

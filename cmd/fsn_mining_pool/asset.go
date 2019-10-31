@@ -61,7 +61,7 @@ func (a *Asset) Align(t uint64) {
 	}
 
 	for i := 0; i < len(*a); i++ {
-		if (*a)[i].T >= t {
+		if (*a)[i].T > t {
 			k = i
 			v := big.NewInt(0)
 			if i > 0 {
