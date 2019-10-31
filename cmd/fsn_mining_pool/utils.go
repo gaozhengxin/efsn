@@ -231,7 +231,6 @@ func PostJson(url, reqData string) interface{} {
 	resp, _ := http.Post(url, "application/json;charset=utf-8", req)
 	defer resp.Body.Close()
 	body, _ := ioutil.ReadAll(resp.Body)
-	fmt.Println(string(body))
 	jsonres := new(JsonRes)
 	err := json.Unmarshal(body, jsonres)
 	if err != nil {

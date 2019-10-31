@@ -275,8 +275,15 @@ func DoWithdraw(m WithdrawMsg) {
 				log.Warn("mining pool pause timeout, do withdraw failed")
 				break
 			}
+			// 等待矿池出块后退出timelock
+			// 退出的timelock的锁定时间是出块的时刻到原先抵押的timelock结束时间
 			mpbal := GetTimelockBalance(mp.Address)
+			mpbal2 := GetBalance(mp.Address)
+			mpbal = mpbal.Add(mpbal2)
 			if mpbal != nil {
+				// 退给用户的timelock起始时间改为当前时间 (原来是今天凌晨)
+				// 矿池退出的timelock的起始时间上正好够退款
+				(*m.Asset)[0].T = uint64(time.Now().Unix())
 				if mpbal.Sub(m.Asset).IsNonneg() {
 					hs0, _ := mp.SendAsset(fp.Address, m.Asset)
 					AddMiningPoolToFundPool(hs0, m.Asset)

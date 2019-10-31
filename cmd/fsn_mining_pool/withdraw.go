@@ -38,7 +38,7 @@ func ValidateWithdraw(r *withdraw.WithdrawRequest) error {
 		if userasset == nil {
 			return fmt.Errorf("user not found")
 		}
-		// 选最长的一段
+		// 选最长的一段, 从今天凌晨开始到用户连续持有足够多的余额的最远的一天
 		today := GetTodayZero().Unix()
 		sendasset, _ := NewAsset(amount, uint64(today), 0)
 		rem := userasset.Sub(sendasset)
