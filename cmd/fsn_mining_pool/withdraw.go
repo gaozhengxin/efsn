@@ -45,13 +45,17 @@ func ValidateWithdraw(r *withdraw.WithdrawRequest) error {
 		log.Debug("ValidateWithdraw()", "rem", rem)
 		starttime := (*rem)[0].T
 		endtime := starttime
-		for i := 0; i < len(*rem); i++ {
-			endtime = (*rem)[i].T
-			if (*rem)[i].V.Cmp(big.NewInt(0)) >= 0 {
-				continue
-			} else {
-				break
+		if len(*rem) > 1 {
+			for i := 0; i < len(*rem); i++ {
+				endtime = (*rem)[i].T
+				if (*rem)[i].V.Cmp(big.NewInt(0)) >= 0 {
+					continue
+				} else {
+					break
+				}
 			}
+		} else if len(*rem) == 1 {
+			endtime = 0
 		}
 		log.Debug("ValidateWithdraw()", "starttime", starttime, "endtime", endtime)
 		if starttime == endtime {
