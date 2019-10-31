@@ -110,6 +110,8 @@ var (
 	IsAutoBuyTicketCmd = `{"jsonrpc":"2.0","method":"fsntx_isAutoBuyTicket","params":["latest"],"id":30}`
 	StartAutoBuyTicketCmd = `{"jsonrpc":"2.0","method":"miner_startAutoBuyTicket","params":[],"id":31}`
 	StopAutoBuyTicketCmd = `{"jsonrpc":"2.0","method":"miner_stopAutoBuyTicket","params":[],"id":32}`
+	IsMiningCmd = `{"jsonrpc":"2.0","method":"eth_mining","id":40}`
+	StartMiningCmd = `{"jsonrpc":"2.0","method":"miner_start","params":[],"id":67}`
 )
 
 func GetCoinbase() common.Address {
@@ -143,6 +145,29 @@ func StopAutoBuyTicket() bool {
 	reqData := StopAutoBuyTicketCmd
 	PostJson(node, reqData)
 	return !IsAutoBuyTicket()
+}
+
+func MustStartMining() bool {
+	if IsMining() == false {
+		reqData := StartMiningCmd
+		PostJson(node, reqData)
+		if IsMining() == false {
+			return false
+		}
+	}
+	return true
+}
+
+func IsMining() (ismining bool) {
+	defer func() {
+		if r := recover(); r != nil {
+			ismining = false
+		}
+	}()
+	reqData := IsMiningCmd
+	res := PostJson(node, reqData)
+	ismining = res.(bool)
+	return
 }
 
 func IsAutoBuyTicket() bool {
@@ -231,6 +256,24 @@ func sendAsset(from, to common.Address, asset *Asset, priv *ecdsa.PrivateKey) ([
 	today := GetTodayZero().Unix()
 	asset.Align(uint64(today))
 
+	// GetBalance and TimelockBalance, decide from timelock or from asset
+	fromasset := false
+	fromtimelock := false
+
+	abal := GetBalance(fp.Address)
+	if abal.Sub(asset).IsNonneg() == true {
+		fromasset = true
+	} else {
+		tbal := GetTimelockBalance(fp.Address)
+		if tbal.Sub(asset).IsNonneg() == true {
+			fromtimelock = true
+		}
+	}
+
+	if (fromtimelock || fromasset) == false {
+		return nil, fmt.Errorf("not enough asset or timelock balance")
+	}
+
 	var argss []common.TimeLockArgs
 	for i := 0; i < len(*asset); i++ {
 		if (*asset)[i].V.Cmp(big.NewInt(0)) == 0 && len(*asset) > 1 {
@@ -273,12 +316,14 @@ func sendAsset(from, to common.Address, asset *Asset, priv *ecdsa.PrivateKey) ([
 		}
 		var param common.FSNCallParam
 		var funcData []byte
+
 		if uint64(*args.EndTime) == common.TimeLockForever {
 			funcData, _ = args.SendAssetArgs.ToData()
 			param = common.FSNCallParam{Func: common.SendAssetFunc, Data: funcData}
 		} else {
 			funcData, _ = args.ToData(common.AssetToTimeLock)
-			param = common.FSNCallParam{Func: common.TimeLockFunc, Data: funcData}
+			if fromasset == true {param = common.FSNCallParam{Func: common.TimeLockFunc, Data: funcData}}
+			if fromtimelock == true {param = common.FSNCallParam{Func: common.TimeLockFunc, Data: funcData}}
 		}
 		d, _ := param.ToBytes()
 		data := hexutil.Bytes(d)

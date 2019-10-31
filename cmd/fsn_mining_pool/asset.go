@@ -195,6 +195,26 @@ func (a *Asset) Sub(b *Asset) (*Asset) {
 	return a.Add(Inv(b))
 }
 
+func (a *Asset) Equal(b *Asset) bool {
+	today := uint64(GetTodayZero().Unix())
+	a.Align(today)
+	b.Align(today)
+	if len(*a) == len(*b) {
+		for i := 0; i < len(*a); i++ {
+			if (*a)[i].T != (*b)[i].T || (*a)[i].V.Cmp((*b)[i].V) != 0 {
+				return false
+			}
+		}
+		return true
+	}
+	return false
+}
+
+func ZeroAsset() *Asset {
+	zero, _ := NewAsset(big.NewInt(0), 0, 0)
+	return zero
+}
+
 func (a *Asset) GetAmountByTime(t uint64) *big.Int {
 	v := big.NewInt(0)
 	for i := 0; i < len(*a); i++ {

@@ -119,6 +119,11 @@ func Sync() {
 		}
 	} ()
 
+	go func() {
+		// check blocks
+		// check transactions
+	}()
+
 	for {
 		select {
 		case height := <-ch:
@@ -201,8 +206,8 @@ func Sync() {
 					}(i, &h)
 				}
 				wg.Wait()
-				head = head + n
 				mongodb.TxBufPush()
+				head = head + n
 			}
 		}
 	}

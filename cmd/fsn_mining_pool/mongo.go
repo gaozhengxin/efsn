@@ -360,7 +360,7 @@ func AddWithdrawLog(req withdraw.WithdrawRequest) error {
 	return err
 }
 
-func AddWithdraw(h common.Hash, m WithdrawMsg) error {
+func AddWithdraw(h common.Hash, m WithdrawMsg, p uint64) error {
 	log.Debug("mongo AddWithdraw()")
 	collectionTable := database.C("Withdraw")
 	mm := mgoWithdrawMsg{
@@ -368,9 +368,32 @@ func AddWithdraw(h common.Hash, m WithdrawMsg) error {
 		Asset: ConvertAsset(*m.Asset),
 		Id: m.Id,
 	}
-	d := bson.M{"txhash":h.Hex(), "withdraw":mm}
+	d := bson.M{"txhash":h.Hex(), "withdraw":mm, "phase":p}
 	err := collectionTable.Insert(d)
 	return err
+}
+
+func GetWithdrawByPhase(p uint64) []WithdrawMsg {
+	log.Debug("mongo GetWithdrawByPhase()")
+	collectionTable := database.C("Withdraw")
+	d := make([]mgoWithdrawMsg,0)
+	err := collectionTable.Find(bson.M{"phase":p}).All(&d)
+	if err != nil {
+		log.Warn("get withdraw by phase failed", "error", err)
+		return nil
+	}
+	ms := make([]WithdrawMsg,0)
+	for _, w := range d {
+		ast := new(Asset)
+		*ast = ConvertMGOAsset(w.Asset)
+		wm := WithdrawMsg{
+			Address:common.HexToAddress(w.Address),
+			Asset:ast,
+			Id:w.Id,
+		}
+		ms = append(ms, wm)
+	}
+	return ms
 }
 
 type mgoWithdrawMsg struct {

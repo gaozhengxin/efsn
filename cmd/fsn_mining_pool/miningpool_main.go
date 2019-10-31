@@ -5,6 +5,7 @@ import (
 	"io/ioutil"
 	"math/big"
 	"os"
+	"sync"
 	"time"
 	"github.com/FusionFoundation/efsn/accounts/keystore"
 	"github.com/FusionFoundation/efsn/common"
@@ -121,6 +122,36 @@ func runApp() {
 	fp := GetFundPool()
 	log.Info("app is prepared", "mining pool", mp.Address.Hex(), "fund pool", fp.Address.Hex(), "fee rate", FeeRate.FloatString(2), "start at block number", InitialBlock, "connecting efsn node", node, "listening withdraw message", port, "chain id", ChainID, "log verbose", log.Lvl(verbose))
 
+	cb := GetCoinbase()
+	if cb != mp.Address {
+		log.Warn("node coinbase is not set to mining pool address", "coinbase", cb.Hex())
+	}
+
+	bal1 := GetBalance(mp.Address)
+	bal2 := GetBalance(fp.Address)
+	fmt.Printf("bal1:%+v, bal2:%+v\n", bal1, bal2)
+	tbal1 := GetTimelockBalance(mp.Address)
+	tbal2 := GetTimelockBalance(fp.Address)
+	fmt.Printf("tbal1:%+v, tbal2:%+v\n", tbal1, tbal2)
+
+	if IsMining() == false {
+		log.Info("node is not mining")
+		if IsAutoBuyTicket() == true {
+			log.Warn("\x1b[41m detected node is auto buying ticket buy is not mining!!! try stop auto buying ticket \x1b[0m")
+			ok := StopAutoBuyTicket()
+			if ok == false {
+				log.Warn("\x1b[41m stop auto buying ticket failed!!! \x1b[0m")
+			}
+		}
+	} else {
+		log.Info("node is mining")
+		if IsAutoBuyTicket() == false {
+			log.Info("node is auto buying ticket")
+		} else {
+			log.Info("node is not auto buying ticket")
+		}
+	}
+
 	go ServerRun()
 	go Run()
 	select{}
@@ -190,6 +221,8 @@ func DoDeposit(tx ethapi.TxAndReceipt) error {
 }
 
 func DoWithdraw(m WithdrawMsg) {
+	WithdrawLock.Lock()
+	defer WithdrawLock.Unlock()
 	ast := GetUserAsset(m.Address)
 	if ast != nil {
 		ast = ast.Sub(m.Asset)
@@ -220,24 +253,79 @@ func DoWithdraw(m WithdrawMsg) {
 	}
 	log.Info("DoWithdraw send asset to user")
 	fp := GetFundPool()
-	hs, err := fp.SendAsset(m.Address, m.Asset)
-	ret := &WithdrawRet{
-		Hs: hs,
-		Id: m.Id,
-	}
-	WithdrawRetCh <- *ret
-	if err != nil || hs == nil || len(hs) == 0 {
-		log.Warn("DoWithdraw send asset failed", "error", err)
-		return
-	}
-	err = AddWithdraw(hs[0], m)
-	if err != nil {
-		log.Warn("DoWithdraw success but write record failed", "error", err)
+	bal := GetBalance(fp.Address)
+	if bal.Sub(m.Asset).IsNonneg() == false {
+		// 资金池不够, 停止买票, 等待矿池timelock余额够了再发给用户
+		log.Info("user withdraw request is accepted but fund pool has no enough balance to withdraw")
+		ret := &WithdrawRet{
+			Id: m.Id,
+			Msg: "withdraw request is accepted, refund will take place in minutes",
+		}
+		WithdrawRetCh <- *ret
+		StopAutoBuyTicket()
+		timer := time.NewTimer(time.Minute * 30)
+		timeout := false
+		go func() {
+			<-timer.C
+			timeout = true
+		}()
+		for {
+			if timeout == true {
+				log.Warn("mining pool pause timeout, do withdraw failed")
+				break
+			}
+			mpbal := GetTimelockBalance(mp.Address)
+			if mpbal != nil {
+				if mpbal.Sub(m.Asset).IsNonneg() {
+					mp.SendAsset(fp.Address, m.Asset)
+					hs, err := fp.SendAsset(m.Address, m.Asset) // timelock to timelock
+					if err != nil || hs == nil || len(hs) == 0 {
+						log.Warn("DoWithdraw send asset failed", "error", err)
+						return
+					}
+					p := GetLastSettlePoint()
+					err = AddWithdraw(hs[0], m, p)
+					if err != nil {
+						log.Warn("DoWithdraw success but write record failed", "error", err)
+					}
+					break
+				}
+			}
+			time.Sleep(time.Second * 1)
+		}
+		if MustStartMining() == true {
+			if StartAutoBuyTicket() == false {
+				log.Warn("node is mining but start auto buy ticket failed")
+			} else {
+				log.Info("node is mining and auto buying ticket")
+			}
+		} else {
+			log.Warn("node is not mining and start mining failed")
+		}
+	} else {
+		// 资金池有足够asset, 直接发给用户
+		hs, err := fp.SendAsset(m.Address, m.Asset)
+
+		ret := &WithdrawRet{
+			Hs: hs,
+			Id: m.Id,
+		}
+		WithdrawRetCh <- *ret
+		if err != nil || hs == nil || len(hs) == 0 {
+			log.Warn("DoWithdraw send asset failed", "error", err)
+			return
+		}
+		p := GetLastSettlePoint()
+		err = AddWithdraw(hs[0], m, p)
+		if err != nil {
+			log.Warn("DoWithdraw success but write record failed", "error", err)
+		}
 	}
 	return
 }
 
 var WithdrawCh chan(WithdrawMsg) = make(chan WithdrawMsg)
+var WithdrawLock = new(sync.Mutex)
 var WithdrawRetCh = make(chan WithdrawRet)
 
 type WithdrawMsg struct {
@@ -249,6 +337,7 @@ type WithdrawMsg struct {
 type WithdrawRet struct {
 	Hs []common.Hash `json:"hashes,omitempty"`
 	Id int `json:"id"`
+	Msg string `json:"msg,omitempty"`
 	Error error `json:"error,omitempty"`
 }
 
@@ -260,6 +349,9 @@ type WithdrawRet struct {
 // then updates last settle point for next peroid
 // then calculates and pays every user's profit according to policy
 func SettleAccounts() error {
+	WithdrawLock.Lock()
+	defer WithdrawLock.Unlock()
+
 	mp := GetMiningPool()
 	fp := GetFundPool()
 
@@ -279,7 +371,7 @@ func SettleAccounts() error {
 		log.Warn("write total profit to mongo failed", "error", err)
 	}
 
-	// 2. get fp out, replenish fp
+	// 2. send profit to fund pool
 	ast, err := NewAsset(totalProfit, 0, 0)
 	if ast != nil && err == nil {
 		log.Info(fmt.Sprintf("mining pool profit is %v", ast))
@@ -315,7 +407,47 @@ func SettleAccounts() error {
 		}
 	}
 
-	return err
+	// 4. get refund data, replenish fp
+	ws := GetWithdrawByPhase(p0)
+	refund := ZeroAsset()
+	for _, ws := range ws {
+		if ws.Asset != nil {
+			refund = refund.Add(ws.Asset)
+		}
+	}
+	if refund.Equal(ZeroAsset()) == false {
+		log.Debug("replenish fund pool")
+		StopAutoBuyTicket()
+		timer := time.NewTimer(time.Minute * 30)
+		timeout := false
+		go func() {
+			<-timer.C
+			timeout = true
+		}()
+		for {
+			if timeout == true {
+				log.Warn("mining pool pause timeout, replenish fund pool failed")
+				break
+			}
+			mpbal := GetTimelockBalance(mp.Address)
+			if mpbal != nil {
+				if mpbal.Sub(refund).IsNonneg() == true {
+					hs, err := mp.SendAsset(fp.Address, refund)
+					if err != nil {
+						log.Warn("send timelock to fund pool failed", "error", err)
+						return fmt.Errorf("replenish fund pool failed, %v", err)
+					}
+					hsh := ""
+					for _, s := range hs {
+						hsh = hsh + ", " + s.Hex()
+					}
+					log.Info("replenish fund pool finished", "hashes", hsh)
+					return nil
+				}
+			}
+		}
+	}
+	return nil
 }
 
 func CalculateUserProfits(totalProfit *big.Int, uam *UserAssetMap) []Profit {

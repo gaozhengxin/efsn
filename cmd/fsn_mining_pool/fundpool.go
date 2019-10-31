@@ -72,6 +72,9 @@ func (fp *FundPool) PayProfits(profits []Profit) (map[string]string, []Profit) {
 	var detained []Profit
 	for _, p := range profits {
 		log.Debug("fund pool send profit", "profit", p)
+		if p.Amount.Cmp(big.NewInt(0)) == 0 {
+			continue
+		}
 		ast, _ := NewAsset(p.Amount, 0, 0)
 		hash, err := fp.SendAsset(p.Address, ast)
 		if err != nil || hash == nil || len(hash) == 0 {
