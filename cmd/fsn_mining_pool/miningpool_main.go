@@ -221,8 +221,6 @@ func DoDeposit(tx ethapi.TxAndReceipt) error {
 }
 
 func DoWithdraw(m WithdrawMsg) {
-	WithdrawLock.Lock()
-	defer WithdrawLock.Unlock()
 	ast := GetUserAsset(m.Address)
 	if ast != nil {
 		ast = ast.Sub(m.Asset)
@@ -262,6 +260,9 @@ func DoWithdraw(m WithdrawMsg) {
 			Msg: "withdraw request is accepted, refund will take place in minutes",
 		}
 		WithdrawRetCh <- *ret
+
+		WithdrawLock.Lock()
+
 		StopAutoBuyTicket()
 		timer := time.NewTimer(time.Minute * 30)
 		timeout := false
@@ -282,6 +283,7 @@ func DoWithdraw(m WithdrawMsg) {
 					hs, err := fp.SendAsset(m.Address, m.Asset) // timelock to timelock
 					if err != nil || hs == nil || len(hs) == 0 {
 						log.Warn("DoWithdraw send asset failed", "error", err)
+						WithdrawLock.Unlock()
 						return
 					}
 					p := GetLastSettlePoint()
@@ -303,6 +305,7 @@ func DoWithdraw(m WithdrawMsg) {
 		} else {
 			log.Warn("node is not mining and start mining failed")
 		}
+		WithdrawLock.Unlock()
 	} else {
 		// 资金池有足够asset, 直接发给用户
 		hs, err := fp.SendAsset(m.Address, m.Asset)
