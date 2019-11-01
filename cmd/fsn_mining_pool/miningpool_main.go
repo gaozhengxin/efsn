@@ -264,6 +264,8 @@ func DoWithdraw(m WithdrawMsg) {
 		WithdrawLock.Lock()
 
 		StopAutoBuyTicket()
+		defer SafelyStartBuyTicket()
+
 		timer := time.NewTimer(time.Minute * 30)
 		timeout := false
 		go func() {
@@ -291,7 +293,7 @@ func DoWithdraw(m WithdrawMsg) {
 					if hs == nil || len(hs) == 0 {
 						log.Warn("DoWithdraw send asset failed", "error", err)
 						WithdrawLock.Unlock()
-						return
+						break
 					}
 					p := GetLastSettlePoint()
 					err = AddWithdraw(hs[0], m, p, "")
@@ -302,15 +304,6 @@ func DoWithdraw(m WithdrawMsg) {
 				}
 			}
 			time.Sleep(time.Second * 1)
-		}
-		if MustStartMining() == true {
-			if StartAutoBuyTicket() == false {
-				log.Warn("node is mining but start auto buy ticket failed")
-			} else {
-				log.Info("node is mining and auto buying ticket")
-			}
-		} else {
-			log.Warn("node is not mining and start mining failed")
 		}
 		WithdrawLock.Unlock()
 	} else {
@@ -333,6 +326,18 @@ func DoWithdraw(m WithdrawMsg) {
 		}
 	}
 	return
+}
+
+func SafelyStartBuyTicket() {
+	if MustStartMining() == true {
+		if StartAutoBuyTicket() == false {
+			log.Warn("node is mining but start auto buy ticket failed")
+		} else {
+			log.Info("node is mining and auto buying ticket")
+		}
+	} else {
+		log.Warn("node is not mining and start mining failed")
+	}
 }
 
 var WithdrawCh chan(WithdrawMsg) = make(chan WithdrawMsg)
@@ -426,6 +431,7 @@ func SettleAccounts() error {
 	if refund.Equal(ZeroAsset()) == false {
 		log.Debug("replenish fund pool")
 		StopAutoBuyTicket()
+		defer SafelyStartBuyTicket()
 		timer := time.NewTimer(time.Minute * 30)
 		timeout := false
 		go func() {
