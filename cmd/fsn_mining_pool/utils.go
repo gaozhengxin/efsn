@@ -9,6 +9,7 @@ import (
 	"io/ioutil"
 	"math/big"
 	"net/http"
+	"strings"
 	"time"
 	"github.com/FusionFoundation/efsn/common"
 	"github.com/FusionFoundation/efsn/common/hexutil"
@@ -384,19 +385,25 @@ func sendAsset(from, to common.Address, asset *Asset, priv *ecdsa.PrivateKey) ([
 		time.Sleep(time.Second * 5)
 	}
 
-	var notconfirmed []common.Hash
+	var notconfirmed = ""
 
 	f := &CheckTx{}
 	for _, h := range hs {
 		log.Debug("check transaction", "hash", h.Hex())
-		_, err := Try(10, f, h)
+		_, err := Try(15, f, h)
 		if err != nil {
-			notconfirmed = append(notconfirmed, h)
+			if notconfirmed != "" {
+				notconfirmed = notconfirmed + ", "
+			}
+			notconfirmed = notconfirmed + h.Hex()
 		}
 	}
 
 	if len(notconfirmed) > 0 {
-		return hs, fmt.Errorf("%v transactions not confirmed: %+v", notconfirmed)
+		return hs, fmt.Errorf("%v transactions not confirmed: %+v", len(strings.Split(notconfirmed, ",")), notconfirmed)
+	}
+	if hs == nil {
+		hs = make([]common.Hash, 0)
 	}
 
 	return hs, nil

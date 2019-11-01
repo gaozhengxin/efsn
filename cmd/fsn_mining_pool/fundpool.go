@@ -77,7 +77,7 @@ func (fp *FundPool) PayProfits(profits []Profit) (map[string]mgoProfit, []Profit
 			continue
 		}
 		ast, _ := NewAsset(p.Amount, 0, 0)
-		hash, err := fp.SendAsset(p.Address, ast)
+		hash := fp.SendAsset(p.Address, ast)
 		if hash == nil || len(hash) == 0 {
 			m[p.Address.Hex()]=mgoProfit{
 				Amount:p.Amount.String(),
@@ -86,27 +86,24 @@ func (fp *FundPool) PayProfits(profits []Profit) (map[string]mgoProfit, []Profit
 			detained = append(detained, p)
 			continue
 		}
-		if err != nil {
-			m[p.Address.Hex()]=mgoProfit{
-				Hash:hash[0].Hex(),
-				Amount:p.Amount.String(),
-				Status:"unconfirmed",
-			}
-			continue
-		}
 		m[p.Address.Hex()]=mgoProfit{
 			Hash:hash[0].Hex(),
 			Amount:p.Amount.String(),
 			Status:"success",
 		}
+		time.Sleep(time.Second * 5)
 	}
 	return m, detained
 }
 
-func (fp *FundPool) SendAsset(acc common.Address, asset *Asset) ([]common.Hash, error) {
+func (fp *FundPool) SendAsset(acc common.Address, asset *Asset) ([]common.Hash) {
 	log.Debug("fund pool, SendAsset()", "to", acc, "asset", asset)
 	fpLock.Lock()
 	defer fpLock.Unlock()
 
-	return sendAsset(fp.Address, acc, asset, fp.Priv)
+	hs, err := sendAsset(fp.Address, acc, asset, fp.Priv)
+	if err != nil {
+		AddError(err)
+	}
+	return hs
 }

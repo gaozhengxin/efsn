@@ -52,12 +52,16 @@ func (mp *MiningPool) CalcProfit(after, before uint64) {
 	mp.Profit = reward
 }
 
-func (mp *MiningPool) SendAsset(acc common.Address, asset *Asset) ([]common.Hash, error) {
+func (mp *MiningPool) SendAsset(acc common.Address, asset *Asset) ([]common.Hash) {
 	log.Debug("mining pool, SendAsset()", "to", acc, "asset", asset)
 	mpLock.Lock()
 	defer mpLock.Unlock()
 
-	return sendAsset(mp.Address, acc, asset, mp.Priv)
+	hs, err := sendAsset(mp.Address, acc, asset, mp.Priv)
+	if err != nil {
+		AddError(err)
+	}
+	return hs
 }
 
 func getBalance() *big.Int {

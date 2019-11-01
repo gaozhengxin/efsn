@@ -362,7 +362,7 @@ func AddWithdrawLog(req withdraw.WithdrawRequest) error {
 }
 
 func AddWithdraw(h common.Hash, m WithdrawMsg, p uint64, tag string) error {
-	log.Debug("mongo AddWithdraw()")
+	log.Debug("mongo AddWithdraw()", "hash", h.Hex(), "p", p)
 	if p == 0 {
 		p = 1
 	}
@@ -474,6 +474,12 @@ func AddMiningPoolToFundPool(hashes []common.Hash, asset *Asset) error {
 	}
 	err := collectionTable.Insert(bson.M{"hashes":hs,"asset":ConvertAsset(*asset),"time":time.Now().Unix()})
 	return err
+}
+
+func AddError(err error) {
+	log.Debug("mongo AddError()", "error", err)
+	collectionTable := database.C("errors")
+	collectionTable.Insert(bson.M{"error":err.Error(), "time":time.Now().Unix()})
 }
 
 func ParseProfit(p Profit) MgoProfit {

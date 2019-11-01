@@ -285,15 +285,10 @@ func DoWithdraw(m WithdrawMsg) {
 				// 矿池退出的timelock的起始时间上正好够退款
 				(*m.Asset)[0].T = uint64(time.Now().Unix())
 				if mpbal.Sub(m.Asset).IsNonneg() {
-					hs0, err := mp.SendAsset(fp.Address, m.Asset)
-					if err != nil {
-						log.Warn("DoWithdraw failed when mining pool send asset/timelock to fund pool", "error", err)
-						WithdrawLock.Unlock()
-						return
-					}
+					hs0 := mp.SendAsset(fp.Address, m.Asset)
 					AddMiningPoolToFundPool(hs0, m.Asset)
-					hs, err := fp.SendAsset(m.Address, m.Asset) // timelock to timelock
-					if err != nil || hs == nil || len(hs) == 0 {
+					hs := fp.SendAsset(m.Address, m.Asset) // timelock to timelock
+					if hs == nil || len(hs) == 0 {
 						log.Warn("DoWithdraw send asset failed", "error", err)
 						WithdrawLock.Unlock()
 						return
@@ -320,14 +315,14 @@ func DoWithdraw(m WithdrawMsg) {
 		WithdrawLock.Unlock()
 	} else {
 		// 资金池有足够asset, 直接发给用户
-		hs, err := fp.SendAsset(m.Address, m.Asset)
+		hs := fp.SendAsset(m.Address, m.Asset)
 
 		ret := &WithdrawRet{
 			Hs: hs,
 			Id: m.Id,
 		}
 		WithdrawRetCh <- *ret
-		if err != nil || hs == nil || len(hs) == 0 {
+		if hs == nil || len(hs) == 0 {
 			log.Warn("DoWithdraw send asset failed", "error", err)
 			return
 		}
@@ -389,11 +384,8 @@ func SettleAccounts() error {
 	ast, err := NewAsset(totalProfit, 0, 0)
 	if ast != nil && err == nil {
 		log.Info(fmt.Sprintf("mining pool profit is %v", ast))
-		hs, err := mp.SendAsset(fp.Address, ast)
+		hs := mp.SendAsset(fp.Address, ast)
 		AddMiningPoolToFundPool(hs, ast)
-		if err != nil {
-			log.Warn("Replenish fund pool reported error", "error", err)
-		}
 	} else {
 		log.Warn("cannot convert profit to asset", "error", err)
 	}
@@ -448,12 +440,8 @@ func SettleAccounts() error {
 			mpbal := GetTimelockBalance(mp.Address)
 			if mpbal != nil {
 				if mpbal.Sub(refund).IsNonneg() == true {
-					hs, err := mp.SendAsset(fp.Address, refund)
+					hs := mp.SendAsset(fp.Address, refund)
 					AddMiningPoolToFundPool(hs, refund)
-					if err != nil {
-						log.Warn("send timelock to fund pool failed", "error", err)
-						return fmt.Errorf("replenish fund pool failed, %v", err)
-					}
 					hsh := ""
 					for _, s := range hs {
 						hsh = hsh + ", " + s.Hex()
