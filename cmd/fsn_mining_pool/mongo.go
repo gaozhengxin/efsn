@@ -469,7 +469,7 @@ func AddMiningPoolToFundPool(hashes []common.Hash, asset *Asset) error {
 	for _, h := range hashes {
 		hs = append(hs, h.Hex())
 	}
-	err := collectionTable.Insert(bson.M{"hashes":hs,"asset":*asset,"time":time.Now().Unix()})
+	err := collectionTable.Insert(bson.M{"hashes":hs,"asset":ConvertAsset(*asset),"time":time.Now().Unix()})
 	return err
 }
 

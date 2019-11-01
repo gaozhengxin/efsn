@@ -188,6 +188,7 @@ func GetBalance(addr common.Address) (ast *Asset) {
 	defer func() {
 		if r := recover(); r != nil {
 			log.Warn("get balance failed", "error", r)
+			ast = ZeroAsset()
 		}
 	}()
 	reqData := fmt.Sprintf(GetBalanceCmd, addr.Hex())
@@ -206,6 +207,7 @@ func GetTimelockBalance(addr common.Address) (ast *Asset) {
 	defer func() {
 		if r := recover(); r != nil {
 			log.Warn("get timelock balance failed", "error", r)
+			ast = ZeroAsset()
 		}
 	}()
 	reqData := fmt.Sprintf(GetTimeLockBalanceCmd, addr.Hex())
@@ -245,37 +247,31 @@ func PostJson(url, reqData string) interface{} {
 	return jsonres.Result
 }
 
-// a timelock has the form: {start time, end time, value}
-// an asset that is a slice of time-value points:
-// [{t_1,v_1},{t_2,v_2},...,{t_n,v_n}]
-// is converted to a slice of timelocks:
-// [{t_1,t_2,v_1},{t_2,t_3,v_2},...,{t_(n-1),t_n,v_(n-1)}]
-// and if vn != 0, timelocks append {t_n,forever,v_n}
+// sendAsset converts asset into fsn_timelocks/fsn_asset
+// and send fsn_timelocks/fsn_asset in one or more transactions.
+// Param asset is in type Asset that defines a time-value histogram:
+// [{t_1,v_1},{t_2,v_2},...,{t_n,v_n}].
+// An fsn_timelock has the form: {starttime, endtime, value}.
+// an asset is converted to a slice of timelocks:
+// [{starttime:t_1,endtime:t_2,v_1},{starttime:t_2,endtime:t_3,v_2},...,{starttime:t_(n-1),endtime:t_n,v_(n-1)}]
+// and if vn != 0, timelocks append {t_n,forever,v_n}.
+// A now/earlier-to-forever timelock is auto promoted to fsn_asset.
+// sendAsset checks fsn_timelocks/fsn_asset balance, and decides
+// whether every transaction is sent from fsn_asset balance or from fsn_timelock balance.
 func sendAsset(from, to common.Address, asset *Asset, priv *ecdsa.PrivateKey) ([]common.Hash, error) {
 	asset.Sort()
 	asset.Reduce()
+	today := GetTodayZero().Unix()
+	asset.Align(uint64(today))
 	if !asset.IsNonneg() {
 		return nil, fmt.Errorf("sendAsset() failed: cannot send negative asset")
 	}
-	today := GetTodayZero().Unix()
-	asset.Align(uint64(today))
 
-	// GetBalance and TimelockBalance, decide from timelock or from asset
-	fromasset := false
-	fromtimelock := false
-
-	abal := GetBalance(fp.Address)
-	if abal.Sub(asset).IsNonneg() == true {
-		fromasset = true
-	} else {
-		tbal := GetTimelockBalance(fp.Address)
-		if tbal.Sub(asset).IsNonneg() == true {
-			fromtimelock = true
-		}
-	}
-
-	if (fromtimelock || fromasset) == false {
-		return nil, fmt.Errorf("not enough asset or timelock balance")
+	abal := GetBalance(from)
+	tbal := GetTimelockBalance(from)
+	bal := abal.Add(tbal)
+	if bal.Sub(asset).IsNonneg() {
+		return nil, fmt.Errorf("no enough fsn asset or timelock balance")
 	}
 
 	var argss []common.TimeLockArgs
@@ -292,6 +288,9 @@ func sendAsset(from, to common.Address, asset *Asset, priv *ecdsa.PrivateKey) ([
 		*(*uint64)(args.StartTime) = (*asset)[i].T
 		if i != len(*asset) - 1 {
 			t := hexutil.Uint64((*asset)[i+1].T)
+			args.EndTime = &t
+		} else {
+			t := hexutil.Uint64(common.TimeLockForever)
 			args.EndTime = &t
 		}
 		argss = append(argss, *args)
@@ -313,22 +312,57 @@ func sendAsset(from, to common.Address, asset *Asset, priv *ecdsa.PrivateKey) ([
 	addr := common.HexToAddress("0xffffffffffffffffffffffffffffffffffffffff")
 
 	var hs []common.Hash
+	var cnt int = 0
 	for _, args := range argss {
 		nonce, err := client.PendingNonceAt(context.Background(), from)
 		if err != nil {
 			return nil, fmt.Errorf("cannot get nonce", "error", err)
 		}
+
+		// GetBalance and TimelockBalance, decide from timelock or from asset
+		fromasset := false
+		fromtimelock := false
+		ast, _ := NewAsset(args.Value.ToInt(), uint64(*args.StartTime), uint64(*args.EndTime))
+
+		abal := GetBalance(from)
+		if abal.Sub(ast).IsNonneg() == true {
+			log.Info("send from asset balance")
+			fromasset = true
+		} else {
+			tbal := GetTimelockBalance(from)
+			if tbal.Sub(ast).IsNonneg() == true {
+				log.Info("send from timelock balance")
+				fromtimelock = true
+			}
+		}
+
+		if (fromtimelock || fromasset) == false {
+			log.Warn("not enough fsn asset or timelock balance to complete all transactions", "total", len(argss), "sent", cnt)
+			return hs, fmt.Errorf("partly success, %v of %v transactions", cnt, len(argss))
+		}
+
 		var param common.FSNCallParam
 		var funcData []byte
 
-		if uint64(*args.EndTime) == common.TimeLockForever {
-			funcData, _ = args.SendAssetArgs.ToData()
-			param = common.FSNCallParam{Func: common.SendAssetFunc, Data: funcData}
-		} else {
-			funcData, _ = args.ToData(common.AssetToTimeLock)
-			if fromasset == true {param = common.FSNCallParam{Func: common.TimeLockFunc, Data: funcData}}
-			if fromtimelock == true {param = common.FSNCallParam{Func: common.TimeLockFunc, Data: funcData}}
+		if fromasset == true {
+			if uint64(*args.EndTime) == common.TimeLockForever && uint64(*args.StartTime) <= uint64(time.Now().Unix()) {
+				funcData, _ = args.SendAssetArgs.ToData()
+				param = common.FSNCallParam{Func: common.SendAssetFunc, Data: funcData}
+			} else {
+				funcData, _ = args.ToData(common.AssetToTimeLock)
+				param = common.FSNCallParam{Func: common.TimeLockFunc, Data: funcData}
+			}
 		}
+		if fromtimelock == true {
+			if uint64(*args.EndTime) == common.TimeLockForever && uint64(*args.StartTime) <= uint64(time.Now().Unix()) {
+				funcData, _ = args.ToData(common.TimeLockToAsset)
+				param = common.FSNCallParam{Func: common.TimeLockFunc, Data: funcData}
+			} else {
+				funcData, _ = args.ToData(common.TimeLockToTimeLock)
+				param = common.FSNCallParam{Func: common.TimeLockFunc, Data: funcData}
+			}
+		}
+
 		d, _ := param.ToBytes()
 		data := hexutil.Bytes(d)
 		if err != nil {
@@ -345,6 +379,7 @@ func sendAsset(from, to common.Address, asset *Asset, priv *ecdsa.PrivateKey) ([
 			log.Warn("send tx failed", "tx", tx, "error", err)
 			continue
 		}
+		cnt++
 		hs = append(hs, h)
 		time.Sleep(time.Second * 5)
 	}

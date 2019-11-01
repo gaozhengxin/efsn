@@ -285,7 +285,12 @@ func DoWithdraw(m WithdrawMsg) {
 				// 矿池退出的timelock的起始时间上正好够退款
 				(*m.Asset)[0].T = uint64(time.Now().Unix())
 				if mpbal.Sub(m.Asset).IsNonneg() {
-					hs0, _ := mp.SendAsset(fp.Address, m.Asset)
+					hs0, err := mp.SendAsset(fp.Address, m.Asset)
+					if err != nil {
+						log.Warn("DoWithdraw failed when mining pool send asset/timelock to fund pool", "error", err)
+						WithdrawLock.Unlock()
+						return
+					}
 					AddMiningPoolToFundPool(hs0, m.Asset)
 					hs, err := fp.SendAsset(m.Address, m.Asset) // timelock to timelock
 					if err != nil || hs == nil || len(hs) == 0 {

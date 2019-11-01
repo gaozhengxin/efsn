@@ -45,6 +45,7 @@ func NewAsset(amount *big.Int, start uint64, end uint64) (*Asset, error) {
 	if end != 0 {
 		*asset = append(*asset, Point{T:end, V:big.NewInt(0)})
 	}
+	asset.Reduce()
 	return asset, nil
 }
 
@@ -103,6 +104,9 @@ func (a *Asset) Reduce() {
 			continue
 		}
 		*c = append(*c, (*a)[i])
+	}
+	if len(*c) > 1 && (*c)[len(*c) - 1].T > uint64(9223372036854775807) {
+		*c = (*c)[:len(*c) - 1]
 	}
 	*a = *c
 }
