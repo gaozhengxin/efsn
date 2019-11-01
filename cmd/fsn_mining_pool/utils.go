@@ -270,7 +270,7 @@ func sendAsset(from, to common.Address, asset *Asset, priv *ecdsa.PrivateKey) ([
 	abal := GetBalance(from)
 	tbal := GetTimelockBalance(from)
 	bal := abal.Add(tbal)
-	if bal.Sub(asset).IsNonneg() {
+	if bal.Sub(asset).IsNonneg()  == false {
 		return nil, fmt.Errorf("no enough fsn asset or timelock balance")
 	}
 

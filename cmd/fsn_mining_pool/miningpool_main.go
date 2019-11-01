@@ -299,7 +299,7 @@ func DoWithdraw(m WithdrawMsg) {
 						return
 					}
 					p := GetLastSettlePoint()
-					err = AddWithdraw(hs[0], m, p)
+					err = AddWithdraw(hs[0], m, p, "")
 					if err != nil {
 						log.Warn("DoWithdraw success but write record failed", "error", err)
 					}
@@ -332,7 +332,7 @@ func DoWithdraw(m WithdrawMsg) {
 			return
 		}
 		p := GetLastSettlePoint()
-		err = AddWithdraw(hs[0], m, p)
+		err = AddWithdraw(hs[0], m, p, "fundpool")
 		if err != nil {
 			log.Warn("DoWithdraw success but write record failed", "error", err)
 		}
@@ -358,12 +358,10 @@ type WithdrawRet struct {
 }
 
 // SettleAccounts runs every day 0:00
-// first, calculate mining profit in the last settlement peroid
-// then calculates fund pool output among
-// last settle point (block height, kept in mongo)
-// and current head (block height)
-// then updates last settle point for next peroid
-// then calculates and pays every user's profit according to policy
+// gets mining reward in last settle peroid
+// and passes to fund pool
+// calculates every users profit and sends from fund pool
+// gets refund history in last settle peroid and replenish fund pool
 func SettleAccounts() error {
 	WithdrawLock.Lock()
 	defer WithdrawLock.Unlock()
@@ -425,7 +423,8 @@ func SettleAccounts() error {
 	}
 
 	// 4. get refund data, replenish fp
-	ws := GetWithdrawByPhase(p0)
+	ws := GetWithdrawByPhase(p0, "fundpool")
+	log.Info("got withdraw history in last settle peroid", "withdrarn assets", ws)
 	refund := ZeroAsset()
 	for _, ws := range ws {
 		if ws.Asset != nil {
