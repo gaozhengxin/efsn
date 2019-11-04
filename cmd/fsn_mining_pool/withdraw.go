@@ -42,6 +42,7 @@ func ValidateWithdraw(r *withdraw.WithdrawRequest) error {
 		today := GetTodayZero().Unix()
 		sendasset, _ := NewAsset(amount, uint64(today), 0)
 		rem := userasset.Sub(sendasset)
+		rem.Align(uint64(today))
 		log.Debug("ValidateWithdraw()", "rem", rem)
 		starttime := (*rem)[0].T
 		endtime := starttime
