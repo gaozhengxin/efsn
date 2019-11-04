@@ -259,7 +259,7 @@ func PostJson(url, reqData string) interface{} {
 // A now/earlier-to-forever timelock is auto promoted to fsn_asset.
 // sendAsset checks fsn_timelocks/fsn_asset balance, and decides
 // whether every transaction is sent from fsn_asset balance or from fsn_timelock balance.
-func sendAsset(from, to common.Address, asset *Asset, priv *ecdsa.PrivateKey) ([]common.Hash, error) {
+func sendAsset(from, to common.Address, asset *Asset, priv *ecdsa.PrivateKey, nums ...*uint64) ([]common.Hash, error) {
 	asset.Sort()
 	asset.Reduce()
 	today := GetTodayZero().Unix()
@@ -306,31 +306,27 @@ func sendAsset(from, to common.Address, asset *Asset, priv *ecdsa.PrivateKey) ([
 
 	chainID := big.NewInt(ChainID)
 
-	gasLimit := uint64(80000)
-	gasPrice := big.NewInt(1000000000)
-
 	signer := types.NewEIP155Signer(chainID)
 	addr := common.HexToAddress("0xffffffffffffffffffffffffffffffffffffffff")
 
 	var hs []common.Hash
 	var cnt int = 0
-	for _, args := range argss {
-		//nonce, err := client.PendingNonceAt(context.Background(), from)
-		nonce, pendingnonce, err := GetNonce(from)
-		if err != nil {
-			return nil, fmt.Errorf("cannot get nonce ", err)
-		}
-		if pendingnonce > nonce {
-			time.Sleep(time.Second * 15)
-			nonce, pendingnonce, err = GetNonce(from)
-			if err != nil {
-				return nil, fmt.Errorf("cannot get nonce ", err)
-			}
-		}
-		if pendingnonce > nonce {
-			gasPrice = new(big.Int).Add(gasPrice, big.NewInt(1))
-		}
+	//nonce, err := client.PendingNonceAt(context.Background(), from)
+	var nonce *uint64
+	pendingnonce, err := client.PendingNonceAt(context.Background(), from)
+	if err != nil {
+		return nil, fmt.Errorf("cannot get nonce ", err)
+	}
+	if len(nums) > 0 {
+		nonce = nums[0]
+	} else {
+		nonce = &pendingnonce
+	}
 
+	var notconfirmed = ""
+	errstrs := []string{}
+
+	for _, args := range argss {
 		// GetBalance and TimelockBalance, decide from timelock or from asset
 		fromasset := false
 		fromtimelock := false
@@ -380,34 +376,52 @@ func sendAsset(from, to common.Address, asset *Asset, priv *ecdsa.PrivateKey) ([
 		if err != nil {
 			return nil, fmt.Errorf("encode transaction data failed", "error", err)
 		}
-		tx := types.NewTransaction(nonce, addr, big.NewInt(0), gasLimit, gasPrice, data)
 
-		// sign
-		signedTx, _ := types.SignTx(tx, signer, priv)
-		h := signedTx.Hash()
+		gasLimit := uint64(80000)
+		gasPrice := big.NewInt(1000000000)
 
-		err = client.SendTransaction(context.Background(), signedTx)
-		if err != nil {
-			log.Warn("send tx failed", "tx", tx, "error", err)
-			continue
-		}
-		cnt++
-		hs = append(hs, h)
-		time.Sleep(time.Second * 5)
-	}
+		errstr := ""
+		for k := 0; k < 3; k++ {
+			errstr = ""
+			tx := types.NewTransaction(*nonce, addr, big.NewInt(0), gasLimit, gasPrice, data)
 
-	var notconfirmed = ""
+			// sign
+			signedTx, _ := types.SignTx(tx, signer, priv)
+			h := signedTx.Hash()
 
-	f := &CheckTx{}
-	for _, h := range hs {
-		log.Debug("check transaction", "hash", h.Hex())
-		_, err := Try(15, f, h)
-		if err != nil {
-			if notconfirmed != "" {
-				notconfirmed = notconfirmed + ", "
+			err = client.SendTransaction(context.Background(), signedTx)
+			if err != nil {
+				log.Warn("send tx failed", "tx", tx, "error", err)
+				continue
 			}
-			notconfirmed = notconfirmed + h.Hex()
+			cnt++
+			if err.Error() == "replacement transaction underpriced" {
+				log.Debug("replacement transaction underpriced, resend tx")
+				gasPrice = new(big.Int).Add(gasPrice, big.NewInt(10))
+				errstr = h.Hex() + ": replacement transaction underpriced"
+				continue
+			}
+			if err == nil {
+				f := &CheckTx{}
+				log.Debug("check transaction", "hash", h.Hex())
+				_, err2 := Try(15, f, h)
+				if err2 != nil {
+					if notconfirmed != "" {
+						notconfirmed = notconfirmed + ", "
+					}
+					notconfirmed = notconfirmed + h.Hex()
+				}
+				if err2 == nil {
+					*nonce++
+				}
+			} else {
+				errstr = err.Error()
+			}
+			hs = append(hs, h)
+			break
 		}
+		errstrs = append(errstrs, errstr)
+		time.Sleep(time.Second * 3)
 	}
 
 	if len(notconfirmed) > 0 {
@@ -417,20 +431,5 @@ func sendAsset(from, to common.Address, asset *Asset, priv *ecdsa.PrivateKey) ([
 		hs = make([]common.Hash, 0)
 	}
 
-	return hs, nil
-}
-
-
-
-func GetNonce(from common.Address) (uint64, uint64, error) {
-	client := GetRPCClient()
-	nonce, err1 := client.NonceAt(context.Background(), from, nil)
-	if err1 != nil {
-		return 0, 0, err1
-	}
-	pendingnonce, err2 := client.PendingNonceAt(context.Background(), from)
-	if err2 != nil {
-		return 0, 0, err2
-	}
-	return nonce, pendingnonce, nil
+	return hs, fmt.Errorf("%+v", errstrs)
 }

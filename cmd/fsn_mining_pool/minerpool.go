@@ -1,8 +1,8 @@
 package main
 
 import (
-	"fmt"
 	"context"
+	"fmt"
 	"crypto/ecdsa"
 	"math/big"
 	"sync"
@@ -15,6 +15,7 @@ type MiningPool struct {
 	Address common.Address
 	Priv *ecdsa.PrivateKey
 	Profit *big.Int
+	Nonce uint64
 }
 
 var mp *MiningPool
@@ -38,6 +39,14 @@ func SetMiningPool(key *ecdsa.PrivateKey) {
 	defer mpLock.Unlock()
 	mp.Priv = key
 	mp.Address = crypto.PubkeyToAddress(key.PublicKey)
+	client := GetRPCClient()
+	nonce, err := client.PendingNonceAt(context.Background(), mp.Address)
+	if err != nil {
+		log.Warn("get mining pool nonce error")
+		mp.Nonce = uint64(1)
+	} else {
+		mp.Nonce = nonce
+	}
 }
 
 func (mp *MiningPool) CalcProfit(after, before uint64) {
@@ -57,7 +66,7 @@ func (mp *MiningPool) SendAsset(acc common.Address, asset *Asset) ([]common.Hash
 	mpLock.Lock()
 	defer mpLock.Unlock()
 
-	hs, err := sendAsset(mp.Address, acc, asset, mp.Priv)
+	hs, err := sendAsset(mp.Address, acc, asset, mp.Priv, &mp.Nonce)
 	if err != nil {
 		AddError(err)
 	}

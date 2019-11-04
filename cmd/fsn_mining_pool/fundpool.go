@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"crypto/ecdsa"
 	"fmt"
 	"math/big"
@@ -14,6 +15,7 @@ import (
 type FundPool struct {
 	Address common.Address
 	Priv *ecdsa.PrivateKey
+	Nonce uint64
 }
 
 var  fp *FundPool
@@ -37,6 +39,14 @@ func SetFundPool(key *ecdsa.PrivateKey) {
 	defer fpLock.Unlock()
 	fp.Priv = key
 	fp.Address = crypto.PubkeyToAddress(key.PublicKey)
+	client := GetRPCClient()
+	nonce, err := client.PendingNonceAt(context.Background(), fp.Address)
+	if err != nil {
+		log.Warn("get fund pool nonce error")
+		fp.Nonce = uint64(1)
+	} else {
+		fp.Nonce = nonce
+	}
 }
 
 func (fp *FundPool) GetTotalOut(after, before uint64) (total *Asset, err error) {
@@ -101,7 +111,7 @@ func (fp *FundPool) SendAsset(acc common.Address, asset *Asset) ([]common.Hash) 
 	fpLock.Lock()
 	defer fpLock.Unlock()
 
-	hs, err := sendAsset(fp.Address, acc, asset, fp.Priv)
+	hs, err := sendAsset(fp.Address, acc, asset, fp.Priv, &fp.Nonce)
 	if err != nil {
 		AddError(err)
 	}

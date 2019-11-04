@@ -231,7 +231,7 @@ func DoWithdraw(m WithdrawMsg) {
 	today := GetTodayZero().Unix()
 	ast.Align(uint64(today))
 	if !ast.IsNonneg() {
-		log.Warn("DoWithdraw fail, account: %v has no enough asset", m.Address)
+		log.Warn(fmt.Sprintf("DoWithdraw fail, account: %v has no enough asset", m.Address.Hex()))
 		ret := &WithdrawRet{
 			Id: m.Id,
 			Error: fmt.Errorf("%v has no enough asset", m.Address),
@@ -284,7 +284,7 @@ func DoWithdraw(m WithdrawMsg) {
 			mpbal = mpbal.Add(mpbal2)
 			if mpbal != nil {
 				// 退给用户的timelock起始时间改为当前时间 (原来是今天凌晨)
-				// 矿池退出的timelock的起始时间上正好够退款
+				// 矿池退出的timelock的起始时间上正好满足退款的starttime
 				(*m.Asset)[0].T = uint64(time.Now().Unix())
 				if mpbal.Sub(m.Asset).IsNonneg() {
 					hs0 := mp.SendAsset(fp.Address, m.Asset)
@@ -307,6 +307,7 @@ func DoWithdraw(m WithdrawMsg) {
 		WithdrawLock.Unlock()
 	} else {
 		// 资金池有足够asset, 直接发给用户
+		WithdrawLock.Lock()
 		hs := fp.SendAsset(m.Address, m.Asset)
 
 		ret := &WithdrawRet{
@@ -316,6 +317,7 @@ func DoWithdraw(m WithdrawMsg) {
 		WithdrawRetCh <- *ret
 		if hs == nil || len(hs) == 0 {
 			log.Warn("DoWithdraw send asset failed", "error", err)
+			WithdrawLock.Unlock()
 			return
 		}
 		p := GetLastSettlePoint()
@@ -323,6 +325,7 @@ func DoWithdraw(m WithdrawMsg) {
 		if err != nil {
 			log.Warn("DoWithdraw success but write record failed", "error", err)
 		}
+		WithdrawLock.Unlock()
 	}
 	return
 }
@@ -420,7 +423,7 @@ func SettleAccounts() error {
 
 	// 4. get refund data, replenish fp
 	ws := GetWithdrawByPhase(p0, "fundpool")
-	log.Info("got withdraw history in last settle peroid", "withdrarn assets", ws)
+	log.Info("got withdraw history in last settle peroid", "withdrawn assets", ws)
 	refund := ZeroAsset()
 	for _, ws := range ws {
 		if ws.Asset != nil {

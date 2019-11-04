@@ -38,7 +38,7 @@ var Myaddrs []string  = []string{""}
 
 var Endpoint = ""
 
-var MaxGoroutineNumber uint64 = 100
+var MaxGoroutineNumber uint64 = 1000
 
 var StartBlock uint64 = 0
 
@@ -163,8 +163,8 @@ func Sync() {
 				//fmt.Printf("\n\n\n\n============\n  height = %v\n  head = %v\n  head + n = %v\n============\n\n\n\n", height, head, head + n)
 
 				var wg sync.WaitGroup
-				wg.Add(int(n))
 				for i := head; i < head + n; i++ {
+					wg.Add(int(1))
 					go func(head uint64, h *uint64) {
 						defer func() {
 							wg.Done()
@@ -274,8 +274,8 @@ func getTransactionAndReceipt(hash string) (*ethapi.TxAndReceipt, error) {
 	if console == nil {
 		return nil, NilConsoleErr
 	}
-	//rw.Lock()
-	//defer rw.Unlock()
+	rw.Lock()
+	defer rw.Unlock()
 
 	printer.Reset()
 	code := fmt.Sprintf(fsn_getTransactionAndReceipt, hash)
@@ -360,8 +360,8 @@ func blockNumber() (uint64, error) {
 	if console == nil {
 		return 0, NilConsoleErr
 	}
-	//rw.Lock()
-	//defer rw.Unlock()
+	rw.Lock()
+	defer rw.Unlock()
 
 	printer.Reset()
 	console.Evaluate(eth_blockNumber)
@@ -376,8 +376,8 @@ func getBlockTransactionCount(number uint64) (int, error) {
 	if console == nil {
 		return 0, NilConsoleErr
 	}
-	//rw.Lock()
-	//defer rw.Unlock()
+	rw.Lock()
+	defer rw.Unlock()
 
 	printer.Reset()
 	code := fmt.Sprintf(eth_getBlockTransactionCount, number)
@@ -393,8 +393,8 @@ func getBlock(number uint64) (_ *types.Block, _ *mgoBlock, err error) {
 	if console == nil {
 		return nil, nil, NilConsoleErr
 	}
-	//rw.Lock()
-	//defer rw.Unlock()
+	rw.Lock()
+	defer rw.Unlock()
 
 	printer.Reset()
 	code := fmt.Sprintf(eth_getBlock, number)
@@ -430,8 +430,8 @@ func getTransactionFromBlock(block uint64, number int) (*types.Transaction, erro
 	if console == nil {
 		return nil, NilConsoleErr
 	}
-	//rw.Lock()
-	//defer rw.Unlock()
+	rw.Lock()
+	defer rw.Unlock()
 
 	printer.Reset()
 	code := fmt.Sprintf(eth_getTransactionFromBlock, block, number)
@@ -451,8 +451,8 @@ func getTransaction(hash string) (*types.Transaction, error) {
 	if console == nil {
 		return  nil, NilConsoleErr
 	}
-	//rw.Lock()
-	//defer rw.Unlock()
+	rw.Lock()
+	defer rw.Unlock()
 
 	printer.Reset()
 	code := fmt.Sprintf(eth_getTransaction, hash)
