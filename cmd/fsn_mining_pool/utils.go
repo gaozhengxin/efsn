@@ -22,9 +22,9 @@ func NewZeroTimer() *time.Timer {
 	today := GetTodayZero()
 	next := today.Add(time.Hour * 24)
 	fmt.Printf("\nzero timer: next zero is %v\n\n", next)
-	//timer := time.NewTimer(next.Sub(time.Now()))
+	timer := time.NewTimer(next.Sub(time.Now()))
 	//fmt.Printf("!!!! timer is set: %v\n\n", next.Sub(time.Now()))
-	timer := time.NewTimer(time.Second * 20) //测试
+	//timer := time.NewTimer(time.Minute * 1) //测试
 	return timer
 }
 
@@ -381,7 +381,7 @@ func sendAsset(from, to common.Address, asset *Asset, priv *ecdsa.PrivateKey, nu
 		gasPrice := big.NewInt(1000000000)
 
 		errstr := ""
-		for k := 0; k < 3; k++ {
+		for k := 0; k < 15; k++ {
 			errstr = ""
 			tx := types.NewTransaction(*nonce, addr, big.NewInt(0), gasLimit, gasPrice, data)
 			log.Debug("send tx", "nonce", *nonce)
@@ -395,7 +395,14 @@ func sendAsset(from, to common.Address, asset *Asset, priv *ecdsa.PrivateKey, nu
 			if err != nil && err.Error() == "replacement transaction underpriced" {
 				log.Debug("replacement transaction underpriced, resend tx")
 				gasPrice = new(big.Int).Add(gasPrice, big.NewInt(10))
+				*nonce++
 				errstr = h.Hex() + ": replacement transaction underpriced"
+				continue
+			}
+			if err != nil && err.Error() == "nonce too low" {
+				log.Debug("nonce too low, resend tx")
+				errstr = h.Hex() + ": nonce too low"
+				*nonce++
 				continue
 			}
 			if err != nil {
@@ -405,7 +412,7 @@ func sendAsset(from, to common.Address, asset *Asset, priv *ecdsa.PrivateKey, nu
 			if err == nil {
 				f := &CheckTx{}
 				log.Debug("check transaction", "hash", h.Hex())
-				_, err2 := Try(15, f, h)
+				_, err2 := Try(30, f, h)
 				if err2 != nil {
 					if notconfirmed != "" {
 						notconfirmed = notconfirmed + ", "
@@ -421,7 +428,9 @@ func sendAsset(from, to common.Address, asset *Asset, priv *ecdsa.PrivateKey, nu
 			hs = append(hs, h)
 			break
 		}
-		errstrs = append(errstrs, errstr)
+		if errstr != "" {
+			errstrs = append(errstrs, errstr)
+		}
 		time.Sleep(time.Second * 3)
 	}
 
@@ -432,5 +441,8 @@ func sendAsset(from, to common.Address, asset *Asset, priv *ecdsa.PrivateKey, nu
 		hs = make([]common.Hash, 0)
 	}
 
-	return hs, fmt.Errorf("%+v", errstrs)
+	if len(errstrs) > 0 {
+		return hs, fmt.Errorf("%+v", errstrs)
+	}
+	return hs, nil
 }

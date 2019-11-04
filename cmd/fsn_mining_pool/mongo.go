@@ -378,9 +378,9 @@ func AddWithdraw(h common.Hash, m WithdrawMsg, p uint64, tag string) error {
 }
 
 func GetWithdrawByPhase(p uint64, tag string) []WithdrawMsg {
-	log.Debug("mongo GetWithdrawByPhase()")
+	log.Debug("mongo GetWithdrawByPhase()", "phase", p, "tag", tag)
 	collectionTable := database.C("Withdraw")
-	d := make([]mgoWithdrawMsg,0)
+	d := make([]mgoWithdraw,0)
 	err := collectionTable.Find(bson.M{"phase":p, "tag":tag}).All(&d)
 	if err != nil {
 		log.Warn("get withdraw by phase failed", "error", err)
@@ -389,15 +389,21 @@ func GetWithdrawByPhase(p uint64, tag string) []WithdrawMsg {
 	ms := make([]WithdrawMsg,0)
 	for _, w := range d {
 		ast := new(Asset)
-		*ast = ConvertMGOAsset(w.Asset)
+		*ast = ConvertMGOAsset(w.Msg.Asset)
 		wm := WithdrawMsg{
-			Address:common.HexToAddress(w.Address),
+			Address:common.HexToAddress(w.Msg.Address),
 			Asset:ast,
-			Id:w.Id,
+			Id:w.Msg.Id,
 		}
 		ms = append(ms, wm)
 	}
 	return ms
+}
+
+type mgoWithdraw struct {
+	Msg mgoWithdrawMsg `bson:"withdraw"`
+	Phase uint64 `bson:"phase"`
+	Tag string `bson:"tag"`
 }
 
 type mgoWithdrawMsg struct {

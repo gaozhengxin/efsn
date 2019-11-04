@@ -111,6 +111,8 @@ func (fp *FundPool) SendAsset(acc common.Address, asset *Asset) ([]common.Hash) 
 	fpLock.Lock()
 	defer fpLock.Unlock()
 
+	client := GetRPCClient()
+	mp.Nonce, _ = client.PendingNonceAt(context.Background(), mp.Address)
 	hs, err := sendAsset(fp.Address, acc, asset, fp.Priv, &fp.Nonce)
 	if err != nil {
 		AddError(err)
