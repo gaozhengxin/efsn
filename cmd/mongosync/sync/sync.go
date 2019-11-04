@@ -30,15 +30,15 @@ func InitSync() {
 	ipcInit()
 	mongodb.MongoInit()
 	mongodb.Mongo = true
-	//glog.Root().SetHandler(glog.LvlFilterHandler(glog.LvlInfo, glog.StreamHandler(os.Stderr, glog.TerminalFormat(true))))
-	glog.Root().SetHandler(glog.LvlFilterHandler(glog.LvlDebug, glog.StreamHandler(os.Stderr, glog.TerminalFormat(true))))
+	glog.Root().SetHandler(glog.LvlFilterHandler(glog.LvlWarn, glog.StreamHandler(os.Stderr, glog.TerminalFormat(true))))
+	//glog.Root().SetHandler(glog.LvlFilterHandler(glog.LvlDebug, glog.StreamHandler(os.Stderr, glog.TerminalFormat(true))))
 }
 
 var Myaddrs []string  = []string{""}
 
 var Endpoint = ""
 
-var MaxGoroutineNumber uint64 = 1000
+var MaxGoroutineNumber uint64 = 100
 
 var StartBlock uint64 = 0
 
@@ -163,10 +163,15 @@ func Sync() {
 				//fmt.Printf("\n\n\n\n============\n  height = %v\n  head = %v\n  head + n = %v\n============\n\n\n\n", height, head, head + n)
 
 				var wg sync.WaitGroup
-				// 一波最多并行获取MaxGoroutineNumber个区块, 每个协程内串行获取区块中的交易, 一波结束后再进入下一波.
+				wg.Add(int(n))
 				for i := head; i < head + n; i++ {
-					wg.Add(1)
 					go func(head uint64, h *uint64) {
+						defer func() {
+							wg.Done()
+							if r := recover(); r != nil {
+								glog.Warn(fmt.Sprintf("%v", r))
+							}
+						}()
 						block, mb, e := getBlock(head + 1)
 						if e != nil {
 							glog.Warn("get block error", "block number", head, "error", e)
@@ -182,10 +187,10 @@ func Sync() {
 
 						if mongodb.Mongo {
 							mongodb.SyncTxs(txs)
-							fmt.Printf("\n\nbuf len: %v\n\n", len(mongodb.GetTxBuf().Txs))
+							/*fmt.Printf("\n\nbuf len: %v\n\n", len(mongodb.GetTxBuf().Txs))
 							if len(mongodb.GetTxBuf().Txs) >= 1000 {
 								mongodb.TxBufPush()
-							}
+							}*/
 
 							CalculateReward(mb, txs)
 
@@ -202,11 +207,10 @@ func Sync() {
 							}
 						}
 						glog.Debug("sync", "block number", head, "transactions", hs)
-						wg.Done()
 					}(i, &h)
 				}
 				wg.Wait()
-				mongodb.TxBufPush()
+				//mongodb.TxBufPush()
 				head = head + n
 			}
 		}
@@ -270,8 +274,8 @@ func getTransactionAndReceipt(hash string) (*ethapi.TxAndReceipt, error) {
 	if console == nil {
 		return nil, NilConsoleErr
 	}
-	rw.Lock()
-	defer rw.Unlock()
+	//rw.Lock()
+	//defer rw.Unlock()
 
 	printer.Reset()
 	code := fmt.Sprintf(fsn_getTransactionAndReceipt, hash)
@@ -343,9 +347,10 @@ func getBlockTxRcpts(number uint64, callback func(*ethapi.TxAndReceipt) bool) ([
 				}
 				continue
 			}
-			if callback(s) {
+			/*if callback(s) {
 				txs = append(txs, s)
-			}
+			}*/
+			txs = append(txs, s)
 		}
 	}
 	return txs, err
@@ -355,8 +360,8 @@ func blockNumber() (uint64, error) {
 	if console == nil {
 		return 0, NilConsoleErr
 	}
-	rw.Lock()
-	defer rw.Unlock()
+	//rw.Lock()
+	//defer rw.Unlock()
 
 	printer.Reset()
 	console.Evaluate(eth_blockNumber)
@@ -371,8 +376,8 @@ func getBlockTransactionCount(number uint64) (int, error) {
 	if console == nil {
 		return 0, NilConsoleErr
 	}
-	rw.Lock()
-	defer rw.Unlock()
+	//rw.Lock()
+	//defer rw.Unlock()
 
 	printer.Reset()
 	code := fmt.Sprintf(eth_getBlockTransactionCount, number)
@@ -388,8 +393,8 @@ func getBlock(number uint64) (_ *types.Block, _ *mgoBlock, err error) {
 	if console == nil {
 		return nil, nil, NilConsoleErr
 	}
-	rw.Lock()
-	defer rw.Unlock()
+	//rw.Lock()
+	//defer rw.Unlock()
 
 	printer.Reset()
 	code := fmt.Sprintf(eth_getBlock, number)
@@ -425,8 +430,8 @@ func getTransactionFromBlock(block uint64, number int) (*types.Transaction, erro
 	if console == nil {
 		return nil, NilConsoleErr
 	}
-	rw.Lock()
-	defer rw.Unlock()
+	//rw.Lock()
+	//defer rw.Unlock()
 
 	printer.Reset()
 	code := fmt.Sprintf(eth_getTransactionFromBlock, block, number)
@@ -446,8 +451,8 @@ func getTransaction(hash string) (*types.Transaction, error) {
 	if console == nil {
 		return  nil, NilConsoleErr
 	}
-	rw.Lock()
-	defer rw.Unlock()
+	//rw.Lock()
+	//defer rw.Unlock()
 
 	printer.Reset()
 	code := fmt.Sprintf(eth_getTransaction, hash)
@@ -474,7 +479,10 @@ func CalculateReward(mb *mgoBlock, txs []*ethapi.TxAndReceipt) {
 	reward := datong.CalcRewards(new(big.Int).SetUint64(mb.Number))
 	gasUses := make(map[common.Hash]*big.Int)
 	for _, tx := range txs {
-		gasUsed, _ := new(big.Int).SetString(tx.Receipt["gasUsed"].(string), 0)
+		gasUsed := big.NewInt(0)
+		if tx.Receipt["gasUsed"] != nil {
+			gasUsed, _ = new(big.Int).SetString(tx.Receipt["gasUsed"].(string), 0)
+		}
 		gasUses[tx.Tx.Hash] = gasUsed
 	}
 	for _, tx := range txs {
@@ -487,12 +495,14 @@ func CalculateReward(mb *mgoBlock, txs []*ethapi.TxAndReceipt) {
 		}
 		if common.IsFsnCall(tx.Tx.To) {
 			fsnCallParam := &common.FSNCallParam{}
-			data, _ := hex.DecodeString(tx.Receipt["logs"].([]interface{})[0].(map[string]interface{})["data"].(string))
-			rlp.DecodeBytes(data, fsnCallParam)
-			feeReward := common.GetFsnCallFee(tx.Tx.To, fsnCallParam.Func)
-			if feeReward.Sign() > 0 {
-				// transaction fee reward
-				reward.Add(reward, feeReward)
+			if tx.Receipt["logs"].([]interface{})[0].(map[string]interface{})["data"] != nil {
+				data, _ := hex.DecodeString(tx.Receipt["logs"].([]interface{})[0].(map[string]interface{})["data"].(string))
+				rlp.DecodeBytes(data, fsnCallParam)
+				feeReward := common.GetFsnCallFee(tx.Tx.To, fsnCallParam.Func)
+				if feeReward.Sign() > 0 {
+					// transaction fee reward
+					reward.Add(reward, feeReward)
+				}
 			}
 		}
 	}
@@ -592,8 +602,8 @@ func (rpcblk *RPCBlock) ToBlock () (blk *types.Block, err error) {
 	blk = types.NewBlockWithHeader(header)
 
 	if hash := blk.Hash(); hash != rpcblk.Hash {
-		fmt.Println(hash.Hex())
-		fmt.Println(rpcblk.Hash.Hex())
+		//fmt.Println(hash.Hex())
+		//fmt.Println(rpcblk.Hash.Hex())
 		err = RPCBlockHashErr
 	}
 	return

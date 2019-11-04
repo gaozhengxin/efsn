@@ -292,7 +292,6 @@ func DoWithdraw(m WithdrawMsg) {
 					hs := fp.SendAsset(m.Address, m.Asset) // timelock to timelock
 					if hs == nil || len(hs) == 0 {
 						log.Warn("DoWithdraw send asset failed", "error", err)
-						WithdrawLock.Unlock()
 						break
 					}
 					p := GetLastSettlePoint()

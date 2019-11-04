@@ -315,9 +315,20 @@ func sendAsset(from, to common.Address, asset *Asset, priv *ecdsa.PrivateKey) ([
 	var hs []common.Hash
 	var cnt int = 0
 	for _, args := range argss {
-		nonce, err := client.PendingNonceAt(context.Background(), from)
+		//nonce, err := client.PendingNonceAt(context.Background(), from)
+		nonce, pendingnonce, err := GetNonce(from)
 		if err != nil {
-			return nil, fmt.Errorf("cannot get nonce", "error", err)
+			return nil, fmt.Errorf("cannot get nonce ", err)
+		}
+		if pendingnonce > nonce {
+			time.Sleep(time.Second * 15)
+			nonce, pendingnonce, err = GetNonce(from)
+			if err != nil {
+				return nil, fmt.Errorf("cannot get nonce ", err)
+			}
+		}
+		if pendingnonce > nonce {
+			gasPrice = new(big.Int).Add(gasPrice, big.NewInt(1))
 		}
 
 		// GetBalance and TimelockBalance, decide from timelock or from asset
@@ -407,4 +418,19 @@ func sendAsset(from, to common.Address, asset *Asset, priv *ecdsa.PrivateKey) ([
 	}
 
 	return hs, nil
+}
+
+
+
+func GetNonce(from common.Address) (uint64, uint64, error) {
+	client := GetRPCClient()
+	nonce, err1 := client.NonceAt(context.Background(), from, nil)
+	if err1 != nil {
+		return 0, 0, err1
+	}
+	pendingnonce, err2 := client.PendingNonceAt(context.Background(), from)
+	if err2 != nil {
+		return 0, 0, err2
+	}
+	return nonce, pendingnonce, nil
 }

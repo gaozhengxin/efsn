@@ -1249,8 +1249,8 @@ func TxBufPush() {
 
 func mgoInsertTxs(mtxs ...mgoTx) {
 	logPrintAll("==== mgoInsertTx() ====")
-	txBufAdd(mtxs...)
-	//AddTxs(tbTransactions, mtxs...)
+	//txBufAdd(mtxs...)
+	AddTxs(tbTransactions, mtxs...)
 }
 
 func mgoInsertBlock(mb *mgoBlock, reverse bool) {
