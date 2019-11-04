@@ -384,22 +384,23 @@ func sendAsset(from, to common.Address, asset *Asset, priv *ecdsa.PrivateKey, nu
 		for k := 0; k < 3; k++ {
 			errstr = ""
 			tx := types.NewTransaction(*nonce, addr, big.NewInt(0), gasLimit, gasPrice, data)
+			log.Debug("send tx", "nonce", *nonce)
 
 			// sign
 			signedTx, _ := types.SignTx(tx, signer, priv)
 			h := signedTx.Hash()
 
 			err = client.SendTransaction(context.Background(), signedTx)
-			if err != nil {
-				log.Warn("send tx failed", "tx", tx, "error", err)
-				continue
-			}
 			cnt++
-			if err.Error() == "replacement transaction underpriced" {
+			if err != nil && err.Error() == "replacement transaction underpriced" {
 				log.Debug("replacement transaction underpriced, resend tx")
 				gasPrice = new(big.Int).Add(gasPrice, big.NewInt(10))
 				errstr = h.Hex() + ": replacement transaction underpriced"
 				continue
+			}
+			if err != nil {
+				log.Warn("send tx failed", "tx", tx, "error", err)
+				return hs, err
 			}
 			if err == nil {
 				f := &CheckTx{}
