@@ -21,10 +21,10 @@ import (
 func NewZeroTimer() *time.Timer {
 	today := GetTodayZero()
 	next := today.Add(time.Hour * 24)
-	fmt.Printf("\nzero timer: next zero is %v\n\n", next)
+	//fmt.Printf("\nzero timer: next zero is %v\n\n", next)
 	timer := time.NewTimer(next.Sub(time.Now()))
 	//fmt.Printf("!!!! timer is set: %v\n\n", next.Sub(time.Now()))
-	//timer := time.NewTimer(time.Minute * 1) //测试
+	//timer := time.NewTimer(time.Second * 30) //测试
 	return timer
 }
 
@@ -412,7 +412,7 @@ func sendAsset(from, to common.Address, asset *Asset, priv *ecdsa.PrivateKey, nu
 			if err == nil {
 				f := &CheckTx{}
 				log.Debug("check transaction", "hash", h.Hex())
-				_, err2 := Try(30, f, h)
+				_, err2 := Try(60, f, h)
 				if err2 != nil {
 					if notconfirmed != "" {
 						notconfirmed = notconfirmed + ", "

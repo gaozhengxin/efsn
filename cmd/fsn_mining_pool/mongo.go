@@ -75,7 +75,7 @@ func GetTxs(after, before uint64) []ethapi.TxAndReceipt {
 		}
 		return nil
 	}
-	fmt.Printf("\nlen(dd) is %v\n", len(dd))
+	log.Debug(fmt.Sprintf("found %v txs", len(dd)))
 	if len(dd) > 0 {
 		for _, obj := range dd {
 			tx, err := ParseTxAndReceipt(obj.(bson.M))
@@ -371,6 +371,7 @@ func AddWithdraw(h common.Hash, m WithdrawMsg, p uint64, tag string) error {
 		Address: m.Address.Hex(),
 		Asset: ConvertAsset(*m.Asset),
 		Id: m.Id,
+		Hash: m.Hash,
 	}
 	d := bson.M{"txhash":h.Hex(), "withdraw":mm, "phase":p, "tag":tag}
 	err := collectionTable.Insert(d)
@@ -410,6 +411,7 @@ type mgoWithdrawMsg struct {
 	Address string `bson:"address"`
 	Asset mgoAsset `bson:"asset"`
 	Id int `bson:"id"`
+	Hash string `bson:"hash"`
 }
 
 type mgoProfit struct {

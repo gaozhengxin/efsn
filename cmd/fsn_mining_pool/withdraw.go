@@ -69,6 +69,7 @@ func ValidateWithdraw(r *withdraw.WithdrawRequest) error {
 		msg := WithdrawMsg{
 			Address:user,
 			Asset:sendasset,
+			Hash:r.Hash,
 		}
 		// AddWithdrawLog
 		AddWithdrawLog(*r)

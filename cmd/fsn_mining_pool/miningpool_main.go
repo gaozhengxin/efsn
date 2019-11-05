@@ -221,6 +221,8 @@ func DoDeposit(tx ethapi.TxAndReceipt) error {
 }
 
 func DoWithdraw(m WithdrawMsg) {
+	IsDoingWithdraw = true
+	defer func() {IsDoingWithdraw = false}()
 	ast := GetUserAsset(m.Address)
 	if ast != nil {
 		ast = ast.Sub(m.Asset)
@@ -266,11 +268,10 @@ func DoWithdraw(m WithdrawMsg) {
 		StopAutoBuyTicket()
 		defer SafelyStartBuyTicket()
 
-		timer := time.NewTimer(time.Minute * 30)
 		timeout := false
 		go func() {
-			<-timer.C
-			timeout = true
+			//time.Sleep(time.Minute * 5)
+			timeout = <-StopWithdraw
 		}()
 		for {
 			if timeout == true {
@@ -351,8 +352,10 @@ func SafelyStartBuyTicket() {
 var WithdrawCh chan(WithdrawMsg) = make(chan WithdrawMsg)
 var WithdrawLock = new(sync.Mutex)
 var WithdrawRetCh = make(chan WithdrawRet)
+var IsDoingWithdraw = false
 
 type WithdrawMsg struct {
+	Hash string
 	Address common.Address
 	Asset *Asset
 	Id int
@@ -365,12 +368,17 @@ type WithdrawRet struct {
 	Error error `json:"error,omitempty"`
 }
 
+var StopWithdraw chan(bool) = make(chan bool)
+
 // SettleAccounts runs every day 0:00
 // gets mining reward in last settle peroid
 // and passes to fund pool
 // calculates every users profit and sends from fund pool
 // gets refund history in last settle peroid and replenish fund pool
 func SettleAccounts() error {
+	go func() {if IsDoingWithdraw {StopWithdraw <-true}}()
+	time.Sleep(time.Second)
+
 	WithdrawLock.Lock()
 	defer WithdrawLock.Unlock()
 
@@ -566,11 +574,13 @@ func Run() {
 					fmt.Println("txtype:" + txtype)
 					switch txtype {
 					case "DEPOSIT":
-						err := DoDeposit(tx)
-						if err != nil {
-							ch <- err.Error()
-							return
-						}
+						go func() {
+							err := DoDeposit(tx)
+							if err != nil {
+								ch <- err.Error()
+								return
+							}
+						}()
 					default:
 					}
 				}

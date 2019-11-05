@@ -115,7 +115,7 @@ func (fp *FundPool) SendAsset(acc common.Address, asset *Asset) ([]common.Hash) 
 	mp.Nonce, _ = client.PendingNonceAt(context.Background(), mp.Address)
 	hs, err := sendAsset(fp.Address, acc, asset, fp.Priv, &fp.Nonce)
 	if err != nil {
-		AddError(err)
+		err = fmt.Errorf(err.Error() + "" + fmt.Sprintf("from:%v, to:%v, asset:%+v", fp.Address.Hex(), acc.Hex(), *asset))
 	}
 	return hs
 }
