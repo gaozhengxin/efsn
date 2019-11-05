@@ -274,7 +274,10 @@ func DoWithdraw(m WithdrawMsg) {
 		}()
 		for {
 			if timeout == true {
-				log.Warn("mining pool pause timeout, do withdraw failed")
+				log.Warn("mining pool pause buying ticket timeout, do withdraw failed")
+				ast := GetUserAsset(m.Address)
+				ast = ast.Add(m.Asset)
+				SetUserAsset(m.Address, *ast)
 				break
 			}
 			// 等待矿池出块后退出timelock
@@ -292,6 +295,9 @@ func DoWithdraw(m WithdrawMsg) {
 					hs := fp.SendAsset(m.Address, m.Asset) // timelock to timelock
 					if hs == nil || len(hs) == 0 {
 						log.Warn("DoWithdraw send asset failed", "error", err)
+						ast := GetUserAsset(m.Address)
+						ast = ast.Add(m.Asset)
+						SetUserAsset(m.Address, *ast)
 						break
 					}
 					p := GetLastSettlePoint()
