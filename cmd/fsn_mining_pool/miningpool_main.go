@@ -301,8 +301,7 @@ func DoWithdraw(m WithdrawMsg) {
 						SetUserAsset(m.Address, *ast)
 						break
 					}
-					p := GetLastSettlePoint()
-					err = AddWithdraw(hs[0], m, p, "")
+					err = AddWithdraw(hs[0], m)
 					if err != nil {
 						log.Warn("DoWithdraw success but write record failed", "error", err)
 					}
@@ -327,15 +326,17 @@ func DoWithdraw(m WithdrawMsg) {
 			WithdrawLock.Unlock()
 			return
 		}
-		p := GetLastSettlePoint()
-		err = AddWithdraw(hs[0], m, p, "fundpool")
+		err = AddWithdraw(hs[0], m)
 		if err != nil {
 			log.Warn("DoWithdraw success but write record failed", "error", err)
 		}
+		ReplenishCh <- m
 		WithdrawLock.Unlock()
 	}
 	return
 }
+
+var ReplenishCh = make(chan WithdrawMsg)
 
 func SafelyStartBuyTicket() {
 	if MustStartMining() == true {
@@ -374,7 +375,6 @@ var StopWithdraw chan(bool) = make(chan bool)
 // gets mining reward in last settle peroid
 // and passes to fund pool
 // calculates every users profit and sends from fund pool
-// gets refund history in last settle peroid and replenish fund pool
 func SettleAccounts() error {
 	go func() {if IsDoingWithdraw {StopWithdraw <-true}}()
 	time.Sleep(time.Second)
@@ -435,19 +435,15 @@ func SettleAccounts() error {
 			continue
 		}
 	}
+	return nil
+}
 
-	// 4. get refund data, replenish fp
-	ws := GetWithdrawByPhase(p0, "fundpool")
-	log.Info("got withdraw history in last settle peroid", "withdrawn assets", ws)
-	refund := ZeroAsset()
-	for _, ws := range ws {
-		if ws.Asset != nil {
-			refund = refund.Add(ws.Asset)
-		}
-	}
+func Replenish(m WithdrawMsg) {
+	log.Info("replenish fund pool", "withdrawn assets", m.Asset)
+	refund := m.Asset
+	mp := GetMiningPool()
 	if refund.Equal(ZeroAsset()) == false {
 		log.Debug("replenish fund pool")
-		StopAutoBuyTicket()
 		defer SafelyStartBuyTicket()
 		timer := time.NewTimer(time.Minute * 30)
 		timeout := false
@@ -456,6 +452,7 @@ func SettleAccounts() error {
 			timeout = true
 		}()
 		for {
+			StopAutoBuyTicket()
 			if timeout == true {
 				log.Warn("mining pool pause timeout, replenish fund pool failed")
 				break
@@ -471,13 +468,13 @@ func SettleAccounts() error {
 						hsh = hsh + ", " + s.Hex()
 					}
 					log.Info("replenish fund pool finished", "hashes", hsh)
-					return nil
+					return
 				}
 			}
-			time.Sleep(time.Second * 5)
+			time.Sleep(time.Second * 15)
 		}
 	}
-	return nil
+	return
 }
 
 func CalculateUserProfits(totalProfit *big.Int, uam *UserAssetMap) []Profit {
@@ -628,6 +625,8 @@ func Run() {
 			} else {
 				panic(fmt.Errorf("settle accounts error: %v", ret))
 			}
+		case m := <-ReplenishCh:
+			go Replenish(m)
 		}
 	}
 }

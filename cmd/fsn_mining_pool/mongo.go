@@ -361,11 +361,8 @@ func AddWithdrawLog(req withdraw.WithdrawRequest) error {
 	return err
 }
 
-func AddWithdraw(h common.Hash, m WithdrawMsg, p uint64, tag string) error {
-	log.Debug("mongo AddWithdraw()", "hash", h.Hex(), "p", p)
-	if p == 0 {
-		p = 1
-	}
+func AddWithdraw(h common.Hash, m WithdrawMsg) error {
+	log.Debug("mongo AddWithdraw()", "hash", h.Hex())
 	collectionTable := database.C("Withdraw")
 	mm := mgoWithdrawMsg{
 		Address: m.Address.Hex(),
@@ -373,7 +370,7 @@ func AddWithdraw(h common.Hash, m WithdrawMsg, p uint64, tag string) error {
 		Id: m.Id,
 		Hash: m.Hash,
 	}
-	d := bson.M{"txhash":h.Hex(), "withdraw":mm, "phase":p, "tag":tag}
+	d := bson.M{"txhash":h.Hex(), "withdraw":mm}
 	err := collectionTable.Insert(d)
 	return err
 }
