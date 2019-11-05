@@ -377,7 +377,8 @@ func SettleAccounts() error {
 		p0 = InitialBlock
 	}
 	p1 := GetHead()
-	defer SetLastSettlePoint(p1)
+	//defer SetLastSettlePoint(p1)
+	SetLastSettlePoint(p1) // 如果SettleAccounts中断, 下次启动后会跳过这段结算周期
 	log.Info(fmt.Sprintf("do settlement between %v and %v", p0, p1))
 
 	// 1. calc mining pool profit
@@ -447,6 +448,7 @@ func SettleAccounts() error {
 			}
 			mpbal := GetTimelockBalance(mp.Address)
 			if mpbal != nil {
+				refund.Align(uint64(time.Now().Unix()))
 				if mpbal.Sub(refund).IsNonneg() == true {
 					hs := mp.SendAsset(fp.Address, refund)
 					AddMiningPoolToFundPool(hs, refund)
@@ -458,6 +460,7 @@ func SettleAccounts() error {
 					return nil
 				}
 			}
+			time.Sleep(time.Second * 5)
 		}
 	}
 	return nil
