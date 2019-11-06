@@ -70,7 +70,7 @@ func (mp *MiningPool) SendAsset(acc common.Address, asset *Asset) ([]common.Hash
 	mp.Nonce, _ = client.PendingNonceAt(context.Background(), mp.Address)
 	hs, err := sendAsset(mp.Address, acc, asset, mp.Priv, &mp.Nonce)
 	if err != nil {
-		err = fmt.Errorf(err.Error() + "" + fmt.Sprintf("from:%v, to:%v, asset:%+v", mp.Address.Hex(), acc.Hex(), *asset))
+		err = fmt.Errorf(err.Error() + "  " + fmt.Sprintf("from:%v, to:%v, asset:%+v", mp.Address.Hex(), acc.Hex(), *asset))
 		AddError(err)
 	}
 	return hs

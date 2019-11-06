@@ -571,13 +571,10 @@ func Run() {
 					fmt.Println("txtype:" + txtype)
 					switch txtype {
 					case "DEPOSIT":
-						go func() {
-							err := DoDeposit(tx)
-							if err != nil {
-								ch <- err.Error()
-								return
-							}
-						}()
+						err := DoDeposit(tx)
+						if err != nil {
+							ch <- err.Error()
+						}
 					default:
 					}
 				}
