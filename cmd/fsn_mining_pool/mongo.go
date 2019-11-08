@@ -21,6 +21,9 @@ var (
 	database *mgo.Database
 	MongoIP string = "localhost" // default port: 27017
 	dbname string = "fusion"
+	DialInfo *mgo.DialInfo
+	MgoUser string
+	MgoPwd string
 )
 
 var AssetsLock *sync.Mutex = new(sync.Mutex)
@@ -35,30 +38,25 @@ func InitMongo() {
 	InitOnce = true
 	url := fmt.Sprintf("mongodb://%v", MongoIP) //url := "localhost"
 	fmt.Printf("mongodb url %v\n", url)
-	f := &NewMgoSession{url:url}
-	session, err := Try(3, f, nil)
+	DialInfo = &mgo.DialInfo{
+		Addrs:[]string{MongoIP},
+		Database: dbname,
+		Timeout:time.Minute * 5,
+		Username:MgoUser,
+		Password:MgoPwd,
+		PoolLimit:4096,
+	}
+	session, err := mgo.DialWithInfo(DialInfo)
 	if err != nil {
 		log.Error("cannot create mongo session")
 		return
 	}
-	Session = session.(*mgo.Session)
+	Session = session
 	Session.SetMode(mgo.Monotonic, true)
 	Session.SetSocketTimeout(1 * time.Hour)
 	database = Session.DB(dbname)
 	fmt.Printf("mongodb mongoServerInit finished.\n")
 	InitOnce = false
-}
-
-type NewMgoSession struct {
-	url string
-}
-
-func (f *NewMgoSession) Do (params ...interface{}) (interface{}, error) {
-	return mgo.Dial(f.url)
-}
-
-func (f *NewMgoSession) Panic (err error) {
-	log.Warn("mgo.Dial", "url", f.url, "fail", err)
 }
 
 func GetTxs(after, before uint64) []ethapi.TxAndReceipt {

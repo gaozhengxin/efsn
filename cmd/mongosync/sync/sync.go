@@ -30,7 +30,7 @@ func InitSync() {
 	ipcInit()
 	mongodb.MongoInit()
 	mongodb.Mongo = true
-	glog.Root().SetHandler(glog.LvlFilterHandler(glog.LvlWarn, glog.StreamHandler(os.Stderr, glog.TerminalFormat(true))))
+	glog.Root().SetHandler(glog.LvlFilterHandler(glog.LvlInfo, glog.StreamHandler(os.Stderr, glog.TerminalFormat(true))))
 	//glog.Root().SetHandler(glog.LvlFilterHandler(glog.LvlDebug, glog.StreamHandler(os.Stderr, glog.TerminalFormat(true))))
 }
 

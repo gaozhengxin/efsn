@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"math/big"
 	"sort"
+	"time"
 )
 
 type Asset []Point
@@ -175,7 +176,9 @@ func (a *Asset) Add(b *Asset) (*Asset) {
 }
 
 func (a *Asset) IsNonneg() bool {
-	for _, p := range (*a) {
+	b := Copy(a)
+	b.Align(uint64(time.Now().Unix()))
+	for _, p := range (*b) {
 		if p.V.Cmp(big.NewInt(0)) == -1 {
 			return false
 		}
@@ -228,4 +231,11 @@ func (a *Asset) GetAmountByTime(t uint64) *big.Int {
 		v = (*a)[i].V
 	}
 	return v
+}
+
+func Copy(a *Asset) *Asset {
+	b := &Asset{}
+	*b = make([]Point, len(*a))
+	copy(*b, *a)
+	return b
 }

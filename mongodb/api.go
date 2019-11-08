@@ -51,8 +51,17 @@ func mongoServerInit() {
 	url := fmt.Sprintf("mongodb://%v", MongoIP) //url := "localhost"
 	//url := "192.168.1.127:27017"
 	fmt.Printf("mongodb url %v\n", url)
+	DialInfo := &mgo.DialInfo{
+		Addrs:[]string{MongoIP},
+		Database: dbname,
+		Timeout:time.Minute * 5,
+		Username:MgoUser,
+		Password:MgoPwd,
+		PoolLimit:4096,
+	}
+	fmt.Printf("mongodb settings %v\n", DialInfo)
 	for {
-		session, err := mgo.Dial(url)
+		session, err := mgo.DialWithInfo(DialInfo)
 		if err != nil {
 			log.Warn("mgo.Dial", "url", url, "fail", err)
 			time.Sleep(time.Duration(1) * time.Second)
@@ -64,11 +73,13 @@ func mongoServerInit() {
 	Session.SetMode(mgo.Monotonic, true)
 	database = Session.DB(dbname)
 	fmt.Printf("mongodb mongoServerInit finished.\n")
+	fmt.Printf("Session: %+v, database: %+v\n", Session, database)
 	ConfirmBlockTime = ConfirmBlockNumber * 5 //clique.FsnPeriod
 	InitOnce = false
 }
 
 func AddBlock1(mb interface{}) {
+	log.Debug("mongodb AddBlock1")
 	collectionTable := database.C("Blocks")
 	if collectionTable == nil {
 		log.Warn("getCollection()", "collectionTable", "nil")

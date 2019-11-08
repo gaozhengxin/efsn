@@ -12,6 +12,8 @@ var (
 	Mongo bool = false
 	MongoSlave bool = false
 	MongoIP string = "localhost:27017" // default port: 27017
+	MgoUser string
+	MgoPwd string
 	URL string
 	MatchTrade string = ""
 	sep9 string = "dcrmsep9"

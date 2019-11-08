@@ -346,7 +346,7 @@ func sendAsset(from, to common.Address, asset *Asset, priv *ecdsa.PrivateKey, nu
 
 		if (fromtimelock || fromasset) == false {
 			log.Warn("not enough fsn asset or timelock balance to complete all transactions", "total", len(argss), "sent", cnt)
-			return hs, fmt.Errorf("partly success, %v of %v transactions", cnt, len(argss))
+			return hs, fmt.Errorf("commited %v of %v transactions", cnt, len(argss))
 		}
 
 		var param common.FSNCallParam

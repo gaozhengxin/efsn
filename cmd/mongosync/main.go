@@ -7,6 +7,7 @@ import (
 	"syscall"
 	"github.com/spf13/cobra"
 	"github.com/FusionFoundation/efsn/cmd/mongosync/sync"
+	"github.com/FusionFoundation/efsn/mongodb"
 )
 
 func init() {
@@ -18,6 +19,9 @@ func initCmd() {
 	rootCmd.PersistentFlags().StringVarP(&sync.Endpoint, "attach", "a", "", "ipc socket path")
 	rootCmd.PersistentFlags().StringVar(&sync.IpcDataDir, "ipcdatadir", "./ipccli", "ipc socket path")
 	rootCmd.PersistentFlags().StringVar(&sync.IpcDocRoot, "ipcdocroot", "./ipccli", "ipc socket path")
+	rootCmd.PersistentFlags().StringVar(&mongodb.MongoIP, "mongo", "0.0.0.0:27017", "mongoip")
+	rootCmd.PersistentFlags().StringVar(&mongodb.MgoUser, "mgouser", "", "mongo user")
+	rootCmd.PersistentFlags().StringVar(&mongodb.MgoPwd, "mgopwd", "", "mongo password")
 	//rootCmd.PersistentFlags().BoolVarP(&partial, "partial", "p", false, "sync txs from selected addresses")
 	//rootCmd.PersistentFlags().StringSliceVar(&sync.Myaddrs, "addresses", []string{}, "addresses")
 }

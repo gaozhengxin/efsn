@@ -67,7 +67,10 @@ func (mp *MiningPool) SendAsset(acc common.Address, asset *Asset) ([]common.Hash
 	defer mpLock.Unlock()
 
 	client := GetRPCClient()
-	mp.Nonce, _ = client.PendingNonceAt(context.Background(), mp.Address)
+	nonce, _ := client.PendingNonceAt(context.Background(), mp.Address)
+	if nonce > mp.Nonce {
+		mp.Nonce = nonce
+	}
 	hs, err := sendAsset(mp.Address, acc, asset, mp.Priv, &mp.Nonce)
 	if err != nil {
 		err = fmt.Errorf(err.Error() + "  " + fmt.Sprintf("from:%v, to:%v, asset:%+v", mp.Address.Hex(), acc.Hex(), *asset))

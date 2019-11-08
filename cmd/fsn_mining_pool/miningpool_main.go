@@ -17,6 +17,8 @@ import (
 func initCmd() {
 	rootCmd.PersistentFlags().StringVar(&node, "node", "http://0.0.0.0:8554", "efsn node rpc address")
 	rootCmd.PersistentFlags().StringVar(&MongoIP, "mongo", "localhost", "mongoDB address")
+	rootCmd.PersistentFlags().StringVar(&MgoUser, "mgouser", "", "mongo user")
+	rootCmd.PersistentFlags().StringVar(&MgoPwd, "mgopwd", "", "mongo password")
 	rootCmd.PersistentFlags().StringVar(&port, "port", "9990", "withdraw port")
 	rootCmd.PersistentFlags().Uint64Var(&InitialBlock, "initialblock", uint64(1), "initial block number")
 	rootCmd.PersistentFlags().Int64Var(&FeePercentage, "feepercentage", int64(10), "fee percentage")
@@ -74,6 +76,7 @@ func runApp() {
 
 	if FeePercentage > 100 {
 		log.Error("fee percentage cannot be larger than 100")
+		return
 	}
 	FeeRate = big.NewRat(FeePercentage, 100)
 
@@ -100,19 +103,23 @@ func runApp() {
 	keyjson1, err1 := ioutil.ReadFile(mpkeyfile)
 	if err1 != nil {
 		log.Error("read mining pool key file failed", "error", err1)
+		return
 	}
 	k1, err1 := keystore.DecryptKey(keyjson1, mppassphrase)
 	if err1 != nil {
 		log.Error("decrypt mining pool key failed", "error", err1)
+		return
 	}
 
 	keyjson2, err2 := ioutil.ReadFile(fpkeyfile)
 	if err2 != nil {
 		log.Error("read fund pool key file failed", "error", err1)
+		return
 	}
 	k2, err2 := keystore.DecryptKey(keyjson2, fppassphrase)
 	if err2 != nil {
 		log.Error("decrypt fund pool key failed", "error", err2)
+		return
 	}
 
 	SetMiningPool(k1.PrivateKey)
@@ -145,7 +152,7 @@ func runApp() {
 		}
 	} else {
 		log.Info("node is mining")
-		if IsAutoBuyTicket() == false {
+		if IsAutoBuyTicket() == true {
 			log.Info("node is auto buying ticket")
 		} else {
 			log.Info("node is not auto buying ticket")
@@ -216,7 +223,7 @@ func DoDeposit(tx ethapi.TxAndReceipt) error {
 		log.Warn("DoDeposit failed", "error", err)
 		return err
 	}
-	AddDeposit(tx.Receipt["transactionHash"].(common.Hash), from, ast)
+	AddDeposit(tx.Receipt["transactionHash"].(common.Hash), from, asset)
 	return nil
 }
 
@@ -227,7 +234,7 @@ func DoWithdraw(m WithdrawMsg) {
 	if ast != nil {
 		ast = ast.Sub(m.Asset)
 	} else {
-		ast = m.Asset
+		ast = ZeroAsset().Sub(m.Asset)
 	}
 	ast.Reduce()
 	today := GetTodayZero().Unix()
@@ -289,8 +296,9 @@ func DoWithdraw(m WithdrawMsg) {
 			if mpbal != nil {
 				// 退给用户的timelock起始时间改为当前时间 (原来是今天凌晨)
 				// 矿池退出的timelock的起始时间上正好满足退款的starttime
-				(*m.Asset)[0].T = uint64(time.Now().Unix())
+				//(*m.Asset)[0].T = uint64(time.Now().Unix())
 				if mpbal.Sub(m.Asset).IsNonneg() {
+					log.Debug("mining pool has enough balance")
 					hs0 := mp.SendAsset(fp.Address, m.Asset)
 					AddMiningPoolToFundPool(hs0, m.Asset)
 					hs := fp.SendAsset(m.Address, m.Asset) // timelock to timelock
