@@ -43,7 +43,7 @@ func ValidateWithdraw(r *withdraw.WithdrawRequest) error {
 		sendasset, _ := NewAsset(amount, uint64(today), 0)
 		rem := userasset.Sub(sendasset)
 		rem.Align(uint64(today))
-		log.Debug("ValidateWithdraw()", "rem", rem)
+		log.Debug("ValidateWithdra)", "rem", rem)
 		starttime := (*rem)[0].T
 		endtime := starttime
 		if len(*rem) > 1 {
@@ -74,7 +74,8 @@ func ValidateWithdraw(r *withdraw.WithdrawRequest) error {
 		// AddWithdrawLog
 		AddWithdrawLog(*r)
 		// 传入WithdrawCh
-		WithdrawCh <- msg
+		go func() {WithdrawCh <- msg}()
+		time.Sleep(time.Second * 3)
 	} else {
 		return fmt.Errorf("verify signature failed")
 	}

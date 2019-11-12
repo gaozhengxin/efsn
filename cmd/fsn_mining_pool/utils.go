@@ -21,10 +21,9 @@ import (
 func NewZeroTimer() *time.Timer {
 	today := GetTodayZero()
 	next := today.Add(time.Hour * 24)
-	//fmt.Printf("\nzero timer: next zero is %v\n\n", next)
 	timer := time.NewTimer(next.Sub(time.Now()))
 	//fmt.Printf("!!!! timer is set: %v\n\n", next.Sub(time.Now()))
-	//timer := time.NewTimer(time.Second * 30) //测试
+	//timer := time.NewTimer(time.Second * 600) //测试
 	return timer
 }
 
@@ -260,10 +259,7 @@ func PostJson(url, reqData string) interface{} {
 // sendAsset checks fsn_timelocks/fsn_asset balance, and decides
 // whether every transaction is sent from fsn_asset balance or from fsn_timelock balance.
 func sendAsset(from, to common.Address, asset *Asset, priv *ecdsa.PrivateKey, nums ...*uint64) ([]common.Hash, error) {
-	asset.Sort()
-	asset.Reduce()
-	today := GetTodayZero().Unix()
-	asset.Align(uint64(today))
+	asset.Align(uint64(time.Now().Unix()))
 	if !asset.IsNonneg() {
 		return nil, fmt.Errorf("sendAsset() failed: cannot send negative asset")
 	}
@@ -271,10 +267,11 @@ func sendAsset(from, to common.Address, asset *Asset, priv *ecdsa.PrivateKey, nu
 	abal := GetBalance(from)
 	tbal := GetTimelockBalance(from)
 	bal := abal.Add(tbal)
-	if bal.Sub(asset).IsNonneg()  == false {
+	if bal.Sub(asset).IsNonneg(uint64(time.Now().Unix()))  == false {
 		return nil, fmt.Errorf("no enough fsn asset or timelock balance")
 	}
 
+	// divide asset into parts
 	var argss []common.TimeLockArgs
 	for i := 0; i < len(*asset); i++ {
 		if (*asset)[i].V.Cmp(big.NewInt(0)) == 0 && len(*asset) > 1 {
@@ -304,12 +301,7 @@ func sendAsset(from, to common.Address, asset *Asset, priv *ecdsa.PrivateKey, nu
 		return nil, fmt.Errorf("cannot get chain id in SendFSN", "error", err)
 	}*/
 
-	chainID := big.NewInt(ChainID)
-
-	signer := types.NewEIP155Signer(chainID)
-	addr := common.HexToAddress("0xffffffffffffffffffffffffffffffffffffffff")
-
-	var hs []common.Hash
+	var hs []common.Hash = make([]common.Hash, 0)
 	var cnt int = 0
 	//nonce, err := client.PendingNonceAt(context.Background(), from)
 	var nonce *uint64
@@ -327,26 +319,51 @@ func sendAsset(from, to common.Address, asset *Asset, priv *ecdsa.PrivateKey, nu
 	errstrs := []string{}
 
 	for _, args := range argss {
-		// GetBalance and TimelockBalance, decide from timelock or from asset
+		// for each part, GetBalance and TimelockBalance, decide from timelock or from asset
 		fromasset := false
 		fromtimelock := false
 		ast, _ := NewAsset(args.Value.ToInt(), uint64(*args.StartTime), uint64(*args.EndTime))
 
 		abal := GetBalance(from)
-		if abal.Sub(ast).IsNonneg() == true {
+		tbal := GetTimelockBalance(from)
+		if abal.Sub(ast).IsNonneg(uint64(time.Now().Unix())) == true {
 			log.Info("send from asset balance")
 			fromasset = true
 		} else {
-			tbal := GetTimelockBalance(from)
-			if tbal.Sub(ast).IsNonneg() == true {
+			if tbal.Sub(ast).IsNonneg(uint64(time.Now().Unix())) == true {
 				log.Info("send from timelock balance")
 				fromtimelock = true
 			}
 		}
 
 		if (fromtimelock || fromasset) == false {
-			log.Warn("not enough fsn asset or timelock balance to complete all transactions", "total", len(argss), "sent", cnt)
-			return hs, fmt.Errorf("commited %v of %v transactions", cnt, len(argss))
+			if bal := abal.Add(tbal); bal.Sub(ast).IsNonneg(uint64(time.Now().Unix())) {
+				log.Debug("balance is enough but need to switch asset to timelock")
+				tmpast, _ := NewAsset((*big.Int)(args.Value), uint64(*args.StartTime), uint64(*args.EndTime))
+				tmpast1 := tbal.Sub(tmpast)
+				v0 := new(big.Int)
+				for _, p := range *tmpast1 {
+					if p.V.Cmp(big.NewInt(0)) == -1 {
+						v0 = p.V
+					}
+				}
+				args0 := &common.TimeLockArgs{}
+				args0.Init()
+				args0.AssetID = common.HexToHash("0xffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff")
+				args0.To = from
+				v := args.Value.ToInt()
+				v1 := new(big.Int).Add(v, v0)
+				args0.Value = (*hexutil.Big)(v1)
+				funcData, _ := (*args0).ToData(common.AssetToTimeLock)
+				param := common.FSNCallParam{Func: common.TimeLockFunc, Data: funcData}
+				d, _ := param.ToBytes()
+				data := hexutil.Bytes(d)
+				sendTx(data, nonce, priv)
+				fromtimelock = true
+			} else {
+				log.Warn("not enough fsn asset or timelock balance to complete all transactions", "total", len(argss), "sent", cnt, "asset balance", abal, "timelock balance", tbal)
+				return hs, fmt.Errorf("commited %v of %v transactions", cnt, len(argss))
+			}
 		}
 
 		var param common.FSNCallParam
@@ -377,64 +394,23 @@ func sendAsset(from, to common.Address, asset *Asset, priv *ecdsa.PrivateKey, nu
 			return nil, fmt.Errorf("encode transaction data failed", "error", err)
 		}
 
-		gasLimit := uint64(80000)
-		gasPrice := big.NewInt(1000000000)
-
-		errstr := ""
-		for k := 0; k < 15; k++ {
-			errstr = ""
-			tx := types.NewTransaction(*nonce, addr, big.NewInt(0), gasLimit, gasPrice, data)
-			log.Debug("send tx", "nonce", *nonce)
-
-			// sign
-			signedTx, _ := types.SignTx(tx, signer, priv)
-			h := signedTx.Hash()
-
-			err = client.SendTransaction(context.Background(), signedTx)
-			cnt++
-			if err != nil && err.Error() == "replacement transaction underpriced" {
-				log.Debug("replacement transaction underpriced, resend tx")
-				gasPrice = new(big.Int).Add(gasPrice, big.NewInt(10))
-				*nonce++
-				errstr = h.Hex() + ": replacement transaction underpriced"
-				continue
-			}
-			if err != nil && err.Error() == "nonce too low" {
-				log.Debug("nonce too low, resend tx")
-				errstr = h.Hex() + ": nonce too low"
-				*nonce++
-				continue
-			}
-			if err != nil {
-				log.Warn("send tx failed", "tx", tx, "error", err)
-				return hs, err
-			}
-			if err == nil {
-				f := &CheckTx{}
-				log.Debug("check transaction", "hash", h.Hex())
-				_, err2 := Try(60, f, h)
-				if err2 != nil {
-					if notconfirmed != "" {
-						notconfirmed = notconfirmed + ", "
-					}
-					notconfirmed = notconfirmed + h.Hex()
-				}
-				if err2 == nil {
-					*nonce++
-				}
-			} else {
-				errstr = err.Error()
-			}
+		h, confirmed, err := sendTx(data, nonce, priv)
+		cnt++
+		if err != nil {
+			errstrs = append(errstrs, err.Error())
+		} else {
 			hs = append(hs, h)
-			break
-		}
-		if errstr != "" {
-			errstrs = append(errstrs, errstr)
+			if confirmed == false {
+				if notconfirmed != "" {
+					notconfirmed = notconfirmed + ", "
+				}
+				notconfirmed = notconfirmed + h.Hex()
+			}
 		}
 		time.Sleep(time.Second * 3)
 	}
 
-	if len(notconfirmed) > 0 {
+	if notconfirmed != "" {
 		return hs, fmt.Errorf("%v transactions not confirmed: %+v", len(strings.Split(notconfirmed, ",")), notconfirmed)
 	}
 	if hs == nil {
@@ -445,4 +421,63 @@ func sendAsset(from, to common.Address, asset *Asset, priv *ecdsa.PrivateKey, nu
 		return hs, fmt.Errorf("%+v", errstrs)
 	}
 	return hs, nil
+}
+
+func sendTx(data hexutil.Bytes, nonce *uint64, priv *ecdsa.PrivateKey) (common.Hash, bool, error) {
+	client := GetRPCClient()
+	chainID := big.NewInt(ChainID)
+
+	signer := types.NewEIP155Signer(chainID)
+	addr := common.HexToAddress("0xffffffffffffffffffffffffffffffffffffffff")
+
+	gasLimit := uint64(80000)
+	gasPrice := big.NewInt(1000000000)
+	confirmed := false
+
+	errstr := ""
+	h := common.Hash{}
+	for k := 0; k < 15; k++ {
+		errstr = ""
+		tx := types.NewTransaction(*nonce, addr, big.NewInt(0), gasLimit, gasPrice, data)
+		log.Debug("send tx", "nonce", *nonce)
+
+		// sign
+		signedTx, _ := types.SignTx(tx, signer, priv)
+		h = signedTx.Hash()
+
+		err := client.SendTransaction(context.Background(), signedTx)
+		if err != nil && err.Error() == "replacement transaction underpriced" {
+			log.Debug("replacement transaction underpriced, resend tx")
+			gasPrice = new(big.Int).Add(gasPrice, big.NewInt(10))
+			*nonce++
+			errstr = h.Hex() + ": replacement transaction underpriced"
+			continue
+		}
+		if err != nil && err.Error() == "nonce too low" {
+			log.Debug("nonce too low, resend tx")
+			errstr = h.Hex() + ": nonce too low"
+			*nonce++
+			continue
+		}
+		if err != nil {
+			log.Warn("send tx failed", "tx", tx, "error", err)
+			return h, confirmed, err
+		}
+		if err == nil {
+			f := &CheckTx{}
+			log.Debug("check transaction", "hash", h.Hex())
+			_, err2 := Try(60, f, h)
+			if err2 == nil {
+				confirmed = true
+				*nonce++
+			}
+		} else {
+			errstr = err.Error()
+		}
+		break
+	}
+	if errstr != "" {
+		return h, confirmed, fmt.Errorf(errstr)
+	}
+	return h, confirmed, nil
 }

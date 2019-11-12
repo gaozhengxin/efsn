@@ -239,7 +239,7 @@ func DoWithdraw(m WithdrawMsg) {
 	ast.Reduce()
 	today := GetTodayZero().Unix()
 	ast.Align(uint64(today))
-	if !ast.IsNonneg() {
+	if !ast.IsNonneg(uint64(time.Now().Unix())) {
 		log.Warn(fmt.Sprintf("DoWithdraw fail, account: %v has no enough asset", m.Address.Hex()))
 		ret := &WithdrawRet{
 			Id: m.Id,
@@ -261,7 +261,9 @@ func DoWithdraw(m WithdrawMsg) {
 	log.Info("DoWithdraw send asset to user")
 	fp := GetFundPool()
 	bal := GetBalance(fp.Address)
-	if bal.Sub(m.Asset).IsNonneg() == false {
+	bal2 := GetTimelockBalance(fp.Address)
+	bal = bal.Add(bal2)
+	if bal.Sub(m.Asset).IsNonneg(uint64(time.Now().Unix())) == false {
 		// 资金池不够, 停止买票, 等待矿池timelock余额够了再发给用户
 		log.Info("user withdraw request is accepted but fund pool has no enough balance to withdraw")
 		ret := &WithdrawRet{
@@ -294,10 +296,9 @@ func DoWithdraw(m WithdrawMsg) {
 			mpbal2 := GetBalance(mp.Address)
 			mpbal = mpbal.Add(mpbal2)
 			if mpbal != nil {
-				// 退给用户的timelock起始时间改为当前时间 (原来是今天凌晨)
 				// 矿池退出的timelock的起始时间上正好满足退款的starttime
 				//(*m.Asset)[0].T = uint64(time.Now().Unix())
-				if mpbal.Sub(m.Asset).IsNonneg() {
+				if mpbal.Sub(m.Asset).IsNonneg(uint64(time.Now().Unix())) {
 					log.Debug("mining pool has enough balance")
 					hs0 := mp.SendAsset(fp.Address, m.Asset)
 					AddMiningPoolToFundPool(hs0, m.Asset)
@@ -316,7 +317,7 @@ func DoWithdraw(m WithdrawMsg) {
 					break
 				}
 			}
-			time.Sleep(time.Second * 1)
+			time.Sleep(time.Second * 5)
 		}
 		WithdrawLock.Unlock()
 	} else {
@@ -331,6 +332,9 @@ func DoWithdraw(m WithdrawMsg) {
 		WithdrawRetCh <- *ret
 		if hs == nil || len(hs) == 0 {
 			log.Warn("DoWithdraw send asset failed", "error", err)
+			ast := GetUserAsset(m.Address)
+			ast = ast.Add(m.Asset)
+			SetUserAsset(m.Address, *ast)
 			WithdrawLock.Unlock()
 			return
 		}
@@ -338,7 +342,8 @@ func DoWithdraw(m WithdrawMsg) {
 		if err != nil {
 			log.Warn("DoWithdraw success but write record failed", "error", err)
 		}
-		ReplenishCh <- m
+		go func(){ReplenishCh <- m}()
+		time.Sleep(time.Second * 3)
 		WithdrawLock.Unlock()
 	}
 	return
@@ -468,7 +473,7 @@ func Replenish(m WithdrawMsg) {
 			mpbal := GetTimelockBalance(mp.Address)
 			if mpbal != nil {
 				refund.Align(uint64(time.Now().Unix()))
-				if mpbal.Sub(refund).IsNonneg() == true {
+				if mpbal.Sub(refund).IsNonneg(uint64(time.Now().Unix())) == true {
 					hs := mp.SendAsset(fp.Address, refund)
 					AddMiningPoolToFundPool(hs, refund)
 					hsh := ""

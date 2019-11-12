@@ -4,7 +4,6 @@ import (
 	"fmt"
 	"math/big"
 	"sort"
-	"time"
 )
 
 type Asset []Point
@@ -175,9 +174,11 @@ func (a *Asset) Add(b *Asset) (*Asset) {
 	return d.Cumulate()
 }
 
-func (a *Asset) IsNonneg() bool {
+func (a *Asset) IsNonneg(t ...uint64) bool {
 	b := Copy(a)
-	b.Align(uint64(time.Now().Unix()))
+	if len(t) > 0 {
+		b.Align(t[0])
+	}
 	for _, p := range (*b) {
 		if p.V.Cmp(big.NewInt(0)) == -1 {
 			return false
