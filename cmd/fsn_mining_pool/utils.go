@@ -16,6 +16,8 @@ import (
 	"github.com/FusionFoundation/efsn/core/types"
 	"github.com/FusionFoundation/efsn/ethclient"
 	"github.com/FusionFoundation/efsn/log"
+	cnsl "github.com/FusionFoundation/efsn/console"
+	"github.com/FusionFoundation/efsn/rpc"
 )
 
 func NewZeroTimer() *time.Timer {
@@ -23,7 +25,7 @@ func NewZeroTimer() *time.Timer {
 	next := today.Add(time.Hour * 24)
 	timer := time.NewTimer(next.Sub(time.Now()))
 	//fmt.Printf("!!!! timer is set: %v\n\n", next.Sub(time.Now()))
-	//timer := time.NewTimer(time.Second * 600) //测试
+	//timer := time.NewTimer(time.Second * 900) //测试
 	return timer
 }
 
@@ -351,8 +353,7 @@ func sendAsset(from, to common.Address, asset *Asset, priv *ecdsa.PrivateKey, nu
 				args0.Init()
 				args0.AssetID = common.HexToHash("0xffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff")
 				args0.To = from
-				v := args.Value.ToInt()
-				v1 := new(big.Int).Add(v, v0)
+				v1 := new(big.Int).Abs(v0)
 				args0.Value = (*hexutil.Big)(v1)
 				funcData, _ := (*args0).ToData(common.AssetToTimeLock)
 				param := common.FSNCallParam{Func: common.TimeLockFunc, Data: funcData}
@@ -423,6 +424,64 @@ func sendAsset(from, to common.Address, asset *Asset, priv *ecdsa.PrivateKey, nu
 	return hs, nil
 }
 
+func GetTxTimestampFromNode(txhash common.Hash) (timestamp string) {
+	defer func() {
+		if r := recover(); r != nil {
+			log.Warn("get tx timestamp from node failed", "error", r)
+		}
+	}()
+	client, err := rpc.Dial(node)
+	if err != nil {
+		log.Warn("get timestamp failed", "error", err)
+		return
+	}
+	printer := bytes.NewBufferString("")
+	cfg := cnsl.Config{
+		DataDir: "./",
+		DocRoot: "./",
+		Client: client,
+		Printer: printer,
+	}
+
+	console, err := cnsl.New(cfg)
+	if err != nil {
+		log.Warn("get timestamp failed", "error", err)
+		return
+	}
+	printer.Reset()
+	cmd := fmt.Sprintf(`JSON.stringify(eth.getTransaction("%v"))`, txhash.String())
+	console.Evaluate(cmd)
+	ret := printer.String()
+	printer.Reset()
+
+	ret = strings.TrimSuffix(ret, "\n")
+	trimL := func (l rune) bool {return l != '{'}
+	trimR := func (l rune) bool {return l != '}'}
+	ret = strings.TrimLeftFunc(ret, trimL)
+	ret = strings.TrimRightFunc(ret, trimR)
+	ret = strings.Replace(ret, "\\", "", -1)
+	fmt.Printf("ret:\n%v\n\n", ret)
+	txrcp := make(map[string]interface{})
+	json.Unmarshal([]byte(ret), &txrcp)
+	blockhash := txrcp["blockHash"].(string)
+
+	cmd2 := fmt.Sprintf(`JSON.stringify(eth.getBlock("%v"))`, blockhash)
+	console.Evaluate(cmd2)
+	ret = printer.String()
+	fmt.Printf("ret:\n%v\n\n", ret)
+	printer.Reset()
+	ret = strings.TrimSuffix(ret, "\n")
+	trimL = func (l rune) bool {return l != '{'}
+	trimR = func (l rune) bool {return l != '}'}
+	ret = strings.TrimLeftFunc(ret, trimL)
+	ret = strings.TrimRightFunc(ret, trimR)
+	ret = strings.Replace(ret, "\\", "", -1)
+	block := make(map[string]interface{})
+	json.Unmarshal([]byte(ret), &block)
+	timestamp = fmt.Sprintf("%v", uint64(block["timestamp"].(float64)))
+	return timestamp
+}
+
 func sendTx(data hexutil.Bytes, nonce *uint64, priv *ecdsa.PrivateKey) (common.Hash, bool, error) {
 	client := GetRPCClient()
 	chainID := big.NewInt(ChainID)
@@ -466,7 +525,7 @@ func sendTx(data hexutil.Bytes, nonce *uint64, priv *ecdsa.PrivateKey) (common.H
 		if err == nil {
 			f := &CheckTx{}
 			log.Debug("check transaction", "hash", h.Hex())
-			_, err2 := Try(60, f, h)
+			_, err2 := Try(120, f, h)
 			if err2 == nil {
 				confirmed = true
 				*nonce++

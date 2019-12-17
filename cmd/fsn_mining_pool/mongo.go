@@ -257,6 +257,33 @@ func GetBlocksReward(a, b uint64, miner common.Address) *big.Int {
 	return reward
 }
 
+func GetTxTimestamp(txhash common.Hash) string {
+	log.Debug("mongo GetTxTimestamp()")
+	defer func() {
+		if r := recover(); r != nil {
+			log.Warn("GetTxTimestamp failed", "error", r)
+		}
+	}()
+	transactions := database.C("Transactions")
+	blockhash := ""
+	d := make([]bson.M, 1)
+	err1 := transactions.Find(bson.M{"hash":bson.M{"$regex":txhash.String(),"$options":"i"}}).Select(bson.M{"blockHash":1}).One(&d[0])
+	if err1 != nil {
+		log.Warn("get tx timestamp error", "error", err1)
+	}
+	blockhash = fmt.Sprintf("%v", d[0]["blockHash"])
+	fmt.Printf("blockHash : %v\n", blockhash)
+	blocks := database.C("Blocks")
+	timestamp := ""
+	d2 := make([]bson.M, 1)
+	err2 := blocks.Find(bson.M{"hash":bson.M{"$regex":blockhash, "$options":"i"}}).Select(bson.M{"timestamp":1}).One(&d2[0])
+	if err2 != nil {
+		log.Warn("get tx timestamp error", "error", err2)
+	}
+	timestamp = fmt.Sprintf("%v", d2[0]["timestamp"])
+	return timestamp
+}
+
 func GetAllAssets() (uam *UserAssetMap) {
 	AssetsLock.Lock()
 	defer AssetsLock.Unlock()
@@ -359,7 +386,7 @@ func AddWithdrawLog(req withdraw.WithdrawRequest) error {
 	return err
 }
 
-func AddWithdraw(h common.Hash, m WithdrawMsg) error {
+func AddWithdraw(h common.Hash, m WithdrawMsg, timestamp string) error {
 	log.Debug("mongo AddWithdraw()", "hash", h.Hex())
 	collectionTable := database.C("Withdraw")
 	mm := mgoWithdrawMsg{
@@ -368,7 +395,7 @@ func AddWithdraw(h common.Hash, m WithdrawMsg) error {
 		Id: m.Id,
 		Hash: m.Hash,
 	}
-	d := bson.M{"txhash":h.Hex(), "withdraw":mm}
+	d := bson.M{"txhash":h.Hex(), "withdraw":mm, "timestamp":timestamp}
 	err := collectionTable.Insert(d)
 	return err
 }
@@ -415,11 +442,11 @@ type mgoProfit struct {
 	Status string
 }
 
-func AddDeposit(txhash common.Hash, user common.Address, ast *Asset) error {
-	log.Debug("mongo AddDeposit()")
+func AddDeposit(txhash common.Hash, user common.Address, ast *Asset, timestamp string) error {
+	log.Debug("mongo AddDeposit()", "txhash", txhash, "user", user, "ast", ast, "timestamp", timestamp)
 	collectionTable := database.C("Deposit")
 	mgoast := ConvertAsset(*ast)
-	d := bson.M{"txhash":txhash.Hex(), "user":user.Hex(), "asset":mgoast}
+	d := bson.M{"txhash":txhash.Hex(), "user":user.Hex(), "asset":mgoast, "timestamp": timestamp}
 	err := collectionTable.Insert(d)
 	return err
 }

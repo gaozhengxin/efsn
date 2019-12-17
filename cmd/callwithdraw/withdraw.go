@@ -33,7 +33,7 @@ func main() {
 		Timestamp:fmt.Sprintf("%v", time.Now().Unix()),
 	}
 	req.MakeHash()
-	fmt.Printf("req:\n%+v\n", req)
+	//fmt.Printf("req:\n%+v\n", req)
 	priv, err := crypto.HexToECDSA(pk)
 	if err != nil {
 		panic(err)
@@ -44,7 +44,8 @@ func main() {
 	}
 	if ok := req.VerifySignature(); ok {
 		data, _ := json.Marshal(req)
-		fmt.Printf("data:\n%v\n", string(data))
+		//fmt.Printf("data:\n%v\n", string(data))
+		fmt.Printf(string(data))
 	}
 	return
 }

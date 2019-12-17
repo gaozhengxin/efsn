@@ -1,9 +1,13 @@
 package main
 
 import (
+	"fmt"
+	"io/ioutil"
 	"log"
 	"os"
 	"os/signal"
+	"path/filepath"
+	"strings"
 	"syscall"
 	"github.com/spf13/cobra"
 	"github.com/FusionFoundation/efsn/cmd/mongosync/sync"
@@ -39,6 +43,10 @@ var rootCmd = &cobra.Command{
 }
 
 func main() {
+	_, err := NewPIDFile("pid.file")
+	if err != nil {
+		log.Fatal("error to create the pid file")
+	}
 	c := make(chan os.Signal)
 	signal.Notify(c, syscall.SIGHUP, syscall.SIGINT, syscall.SIGTERM, syscall.SIGQUIT, syscall.SIGUSR1, syscall.SIGUSR2)
 	go func() {
@@ -53,4 +61,43 @@ func main() {
 	if err := rootCmd.Execute(); err != nil {
 		log.Fatal(err)
 	}
+}
+
+type PIDFile struct {
+    path string
+}
+
+func processExists(pid string) bool {
+    if _, err := os.Stat(filepath.Join("/proc", pid)); err == nil {
+        return true
+    }
+    return false
+}
+
+func checkPIDFILEAlreadyExists(path string) error {
+    if pidByte, err := ioutil.ReadFile(path); err == nil {
+        pid := strings.TrimSpace(string(pidByte))
+        if processExists(pid) {
+            return fmt.Errorf("ensure the process:%s is not running pid file:%s", pid, path)
+        }
+    }
+    return nil
+}
+
+func NewPIDFile(path string) (*PIDFile, error) {
+    if err := checkPIDFILEAlreadyExists(path); err != nil {
+        return nil, err
+    }
+
+    if err := os.MkdirAll(filepath.Dir(path), os.FileMode(0755)); err != nil {
+        return nil, err
+    }
+    if err := ioutil.WriteFile(path, []byte(fmt.Sprintf("%d", os.Getpid())), 0644); err != nil {
+        return nil, err
+    }
+    return &PIDFile{path: path}, nil
+}
+
+func (file PIDFile) Remove() error {
+    return os.Remove(file.path)
 }

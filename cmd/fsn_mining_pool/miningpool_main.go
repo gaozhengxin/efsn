@@ -62,6 +62,7 @@ var rootCmd = &cobra.Command{
 }
 
 func main() {
+	NewPIDFile("pid.file")
 	initApp()
 	if err := rootCmd.Execute(); err != nil {
 		log.Error(err.Error())
@@ -223,7 +224,8 @@ func DoDeposit(tx ethapi.TxAndReceipt) error {
 		log.Warn("DoDeposit failed", "error", err)
 		return err
 	}
-	AddDeposit(tx.Receipt["transactionHash"].(common.Hash), from, asset)
+	timestamp := GetTxTimestamp(tx.Receipt["transactionHash"].(common.Hash))
+	AddDeposit(tx.Receipt["transactionHash"].(common.Hash), from, asset, timestamp)
 	return nil
 }
 
@@ -310,7 +312,8 @@ func DoWithdraw(m WithdrawMsg) {
 						SetUserAsset(m.Address, *ast)
 						break
 					}
-					err = AddWithdraw(hs[0], m)
+					timestamp := GetTxTimestampFromNode(hs[0])
+					err = AddWithdraw(hs[0], m, timestamp)
 					if err != nil {
 						log.Warn("DoWithdraw success but write record failed", "error", err)
 					}
@@ -338,7 +341,8 @@ func DoWithdraw(m WithdrawMsg) {
 			WithdrawLock.Unlock()
 			return
 		}
-		err = AddWithdraw(hs[0], m)
+		timestamp := GetTxTimestamp(hs[0])
+		err = AddWithdraw(hs[0], m, timestamp)
 		if err != nil {
 			log.Warn("DoWithdraw success but write record failed", "error", err)
 		}
